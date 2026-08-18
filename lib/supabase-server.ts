@@ -1,4 +1,4 @@
-import { createServerClient, type CookieOptions } from "@supabase/ssr";
+import { createServerClient } from "@supabase/ssr";
 import { createClient } from "@supabase/supabase-js";
 import { cookies } from "next/headers";
 
@@ -10,14 +10,13 @@ export const supabaseServer = () => {
     {
       cookies: {
         get:    (n: string) => store.get(n)?.value,
-        set:    (n: string, v: string, o: CookieOptions) => { try { store.set({ name: n, value: v, ...o }); } catch {} },
-        remove: (n: string, o: CookieOptions)    => { try { store.set({ name: n, value: "", ...o }); } catch {} },
+        set:    (n: string, v: string, o: any) => { try { store.set({ name: n, value: v, ...o }); } catch {} },
+        remove: (n: string, o: any) => { try { store.set({ name: n, value: "", ...o }); } catch {} },
       },
     }
   );
 };
 
-// Service-role client for admin API routes only. Never import in client code.
 export const supabaseAdmin = () =>
   createClient(
     process.env.NEXT_PUBLIC_SUPABASE_URL!,
