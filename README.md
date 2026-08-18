@@ -11,7 +11,8 @@ Free stack, zero cost, 1000 DAU safe.
 - Google login for anyone.
 - Questions page: Program → Company → Role → Round filters + search. Modern dark UI, glassy cards with depth.
 - Assignments page: Company + Role filters, links from the sheet open in a new tab.
-- Admin page (only for admins): unique users, views, minutes, top Company–Role, per-user table, add/remove admins. Charts for 24h / 7d / 30d.
+- Packets for Hirings page: interview-prep packets grouped by Role + YoE, each with its session recordings ("Watch these to brush up your concepts").
+- Admin page (only for admins): unique users, views, minutes, Company–Role breakdown, per-user table, packet/session tracking by user and by Role/YoE, packet-link management, CSV export, add/remove admins. Charts + a custom date-range filter, on top of 24h / 7d / 30d presets.
 - Daily sync at 23:00 IST — no human needed.
 
 ---
@@ -21,6 +22,7 @@ Free stack, zero cost, 1000 DAU safe.
 ### 1. Supabase
 1. Create free project at supabase.com → note **Project URL**, **anon key**, **service role key**.
 2. SQL editor → paste `supabase/schema.sql` → run.
+3. (Optional, one-time) SQL editor → paste `supabase/seed_packets.sql` → run. Seeds the **Packets for Hirings** page with the current role/YoE packet + session-recording list. Doc/recording URLs start blank — fill them in from Admin → **Manage packet links** once you're signed in as an admin.
 3. Authentication → Providers → **Google** → enable. In Google Cloud Console (step 2 below) you'll get a Client ID/Secret to paste here.
 4. Authentication → URL Configuration → add your Vercel URL (e.g. `https://scaler-ie.vercel.app`) to **Site URL** and to **Redirect URLs** as `https://scaler-ie.vercel.app/auth/callback`.
 

@@ -1,11 +1,15 @@
 "use client";
 import { useEffect, useMemo, useState } from "react";
 import { BarChart, Bar, XAxis, YAxis, Tooltip, ResponsiveContainer, LineChart, Line, CartesianGrid } from "recharts";
+import { FlightSpinner } from "./FlightLoader";
+import PacketLinksManager from "./PacketLinksManager";
 
 type Stats = {
   views: { user_email: string; company: string | null; role: string | null; program: string | null; created_at: string }[];
   sessions: { user_email: string; duration_sec: number; started_at: string }[];
   admins: { email: string; added_at: string; added_by: string | null }[];
+  packetViews: { user_email: string; created_at: string; role: string | null; yoe: string | null }[];
+  sessionWatches: { user_email: string; created_at: string; title: string | null }[];
 };
 
 const RANGES = [
@@ -16,6 +20,20 @@ const RANGES = [
 
 const todayStr = () => new Date().toISOString().slice(0, 10);
 const daysAgoStr = (n: number) => new Date(Date.now() - n * 86400_000).toISOString().slice(0, 10);
+
+function csvEscape(v: unknown) {
+  const s = String(v ?? "");
+  return /[",\n]/.test(s) ? `"${s.replace(/"/g, '""')}"` : s;
+}
+function downloadCsv(filename: string, rows: (string | number)[][]) {
+  const csv = rows.map(r => r.map(csvEscape).join(",")).join("\n");
+  const blob = new Blob([csv], { type: "text/csv;charset=utf-8;" });
+  const url = URL.createObjectURL(blob);
+  const a = document.createElement("a");
+  a.href = url; a.download = filename;
+  document.body.appendChild(a); a.click(); document.body.removeChild(a);
+  URL.revokeObjectURL(url);
+}
 
 export default function AdminDashboard({ me }: { me: string }) {
   const [range, setRange] = useState<"day" | "week" | "month" | "custom">("week");
@@ -121,6 +139,39 @@ export default function AdminDashboard({ me }: { me: string }) {
       .sort((a, b) => b.views - a.views);
   }, [data]);
 
+  // Packets are tracked separately: every open/watch is logged, so re-reading the
+  // same packet twice counts twice for that email (not deduped to "read / not read").
+  const packetPerUser = useMemo(() => {
+    if (!data) return [];
+    const m = new Map<string, { packetsRead: number; sessionsWatched: number; last: string }>();
+    data.packetViews.forEach(v => {
+      const e = m.get(v.user_email) || { packetsRead: 0, sessionsWatched: 0, last: v.created_at };
+      e.packetsRead++;
+      if (v.created_at > e.last) e.last = v.created_at;
+      m.set(v.user_email, e);
+    });
+    data.sessionWatches.forEach(s => {
+      const e = m.get(s.user_email) || { packetsRead: 0, sessionsWatched: 0, last: s.created_at };
+      e.sessionsWatched++;
+      if (s.created_at > e.last) e.last = s.created_at;
+      m.set(s.user_email, e);
+    });
+    return Array.from(m.entries())
+      .map(([email, e]) => ({ email, ...e }))
+      .sort((a, b) => (b.packetsRead + b.sessionsWatched) - (a.packetsRead + a.sessionsWatched));
+  }, [data]);
+
+  const packetRoleBreakdown = useMemo(() => {
+    if (!data) return [];
+    const m = new Map<string, number>();
+    data.packetViews.forEach(v => {
+      if (!v.role) return;
+      const k = `${v.role} · ${v.yoe || "—"}`;
+      m.set(k, (m.get(k) || 0) + 1);
+    });
+    return Array.from(m.entries()).sort((a, b) => b[1] - a[1]).map(([k, v]) => ({ k, v }));
+  }, [data]);
+
   const addAdmin = async () => {
     if (!newAdmin.includes("@")) return;
     await fetch("/api/admin/add-admin", { method: "POST", headers: {"content-type":"application/json"}, body: JSON.stringify({ email: newAdmin }) });
@@ -131,6 +182,29 @@ export default function AdminDashboard({ me }: { me: string }) {
     if (!confirm(`Remove admin ${email}?`)) return;
     await fetch("/api/admin/add-admin", { method: "POST", headers: {"content-type":"application/json"}, body: JSON.stringify({ email, action: "remove" }) });
     load();
+  };
+
+  const exportCsv = () => {
+    const emails = new Set<string>([...perUser.map(u => u.email), ...packetPerUser.map(u => u.email)]);
+    const byEmail = Array.from(emails).map(email => {
+      const u = perUser.find(x => x.email === email);
+      const p = packetPerUser.find(x => x.email === email);
+      const last = [u?.last, p?.last].filter(Boolean).sort().pop();
+      return {
+        email,
+        views: u?.views ?? 0,
+        minutes: u?.minutes ?? 0,
+        packetsRead: p?.packetsRead ?? 0,
+        sessionsWatched: p?.sessionsWatched ?? 0,
+        last: last ? new Date(last).toLocaleString() : "",
+      };
+    }).sort((a, b) => a.email.localeCompare(b.email));
+
+    const rows: (string | number)[][] = [
+      ["Email", "Views", "Minutes", "Packets Read", "Sessions Watched", "Last Activity"],
+      ...byEmail.map(u => [u.email, u.views, u.minutes, u.packetsRead, u.sessionsWatched, u.last]),
+    ];
+    downloadCsv(`admin-usage-${range}-${todayStr()}.csv`, rows);
   };
 
   return (
@@ -166,6 +240,10 @@ export default function AdminDashboard({ me }: { me: string }) {
               className={`ml-1 rounded-full border px-3 py-1 text-sm transition ${range === "custom" ? "border-text bg-text text-ink" : "border-edge text-mute hover:text-text"}`}
             >Go</button>
           </div>
+          <button
+            onClick={exportCsv}
+            className="rounded-full bg-text px-3.5 py-1.5 text-sm font-medium text-ink transition hover:opacity-90"
+          >Download CSV</button>
         </div>
       </section>
 
@@ -258,6 +336,49 @@ export default function AdminDashboard({ me }: { me: string }) {
         </div>
       </Card>
 
+      <section className="grid grid-cols-1 gap-4 lg:grid-cols-2">
+        <Card title={`Packets & sessions — by user (${packetPerUser.length})`}>
+          <div className="max-h-[360px] overflow-y-auto">
+            <table className="w-full text-sm">
+              <thead className="sticky top-0 bg-panel text-left font-mono text-[11px] uppercase tracking-widest text-mute">
+                <tr>
+                  <th className="py-2">Email</th>
+                  <th className="py-2 text-right">Packets read</th>
+                  <th className="py-2 text-right">Sessions watched</th>
+                  <th className="py-2">Last activity</th>
+                </tr>
+              </thead>
+              <tbody className="divide-y divide-edge/60">
+                {packetPerUser.length === 0 && (
+                  <tr><td colSpan={4} className="py-4 text-mute">No packet activity yet in this window.</td></tr>
+                )}
+                {packetPerUser.map(u => (
+                  <tr key={u.email}>
+                    <td className="py-2">{u.email}</td>
+                    <td className="py-2 text-right font-mono text-xs">{u.packetsRead}</td>
+                    <td className="py-2 text-right font-mono text-xs">{u.sessionsWatched}</td>
+                    <td className="py-2 font-mono text-xs text-mute">{new Date(u.last).toLocaleString()}</td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+        </Card>
+        <Card title="Packet reads — by Role & YoE">
+          <div className="divide-y divide-edge/60">
+            {packetRoleBreakdown.length === 0 && <div className="py-4 text-sm text-mute">No packet reads yet in this window.</div>}
+            {packetRoleBreakdown.map(r => (
+              <div key={r.k} className="flex items-center justify-between py-2.5">
+                <span className="text-sm">{r.k}</span>
+                <span className="font-mono text-xs text-mute">{r.v}</span>
+              </div>
+            ))}
+          </div>
+        </Card>
+      </section>
+
+      <PacketLinksManager />
+
       <Card title="Admins">
         <div className="mb-4 flex flex-wrap gap-2">
           <input
@@ -283,7 +404,12 @@ export default function AdminDashboard({ me }: { me: string }) {
         </div>
       </Card>
 
-      {loading && <div className="text-center text-sm text-mute">Loading…</div>}
+      {loading && (
+        <div className="flex flex-col items-center gap-2">
+          <FlightSpinner />
+          <span className="text-sm text-mute">Loading…</span>
+        </div>
+      )}
     </div>
   );
 }

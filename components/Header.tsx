@@ -26,7 +26,7 @@ export default function Header() {
   const tab = (href: string, label: string) => (
     <Link
       href={href}
-      className={`rounded-full px-4 py-1.5 text-sm transition ${
+      className={`whitespace-nowrap rounded-full px-4 py-1.5 text-sm transition ${
         path === href
           ? "bg-panel2 text-text shadow-card"
           : "text-mute hover:text-text"
@@ -43,9 +43,10 @@ export default function Header() {
           <span className="grid h-8 w-8 place-items-center rounded-lg bg-gradient-to-br from-acad to-dsml text-sm font-bold text-ink">S</span>
           <span className="font-display text-xl leading-none">Interview Vault</span>
         </Link>
-        <nav className="flex items-center gap-1">
+        <nav className="flex items-center gap-1 overflow-x-auto">
           {tab("/", "Questions")}
           {tab("/assignments", "Assignments")}
+          {tab("/packets", "Packets for Hirings")}
           {isAdmin && tab("/admin", "Admin")}
         </nav>
         <div className="flex items-center gap-3">

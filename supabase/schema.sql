@@ -64,12 +64,72 @@ create table if not exists sessions (
 create index if not exists idx_s_email on sessions (user_email);
 create index if not exists idx_s_started on sessions (started_at desc);
 
+-- ============ PACKETS (hiring interview-prep packets, per Role x YoE) ============
+create table if not exists packets (
+  id         bigserial primary key,
+  role       text not null,
+  yoe        text not null,
+  doc_title  text,              -- display name of the source doc (reference for admins)
+  doc_link   text,               -- actual URL, filled in via Admin > Manage packet links
+  sort_order int not null default 0,
+  created_at timestamptz default now(),
+  unique (role, yoe)
+);
+
+create table if not exists packet_sessions (
+  id         bigserial primary key,
+  title      text not null unique,
+  url        text,               -- actual recording URL, filled in via Admin > Manage packet links
+  created_at timestamptz default now()
+);
+
+create table if not exists packet_session_links (
+  packet_id  bigint not null references packets(id) on delete cascade,
+  session_id bigint not null references packet_sessions(id) on delete cascade,
+  sort_order int not null default 0,
+  primary key (packet_id, session_id)
+);
+create index if not exists idx_psl_session on packet_session_links (session_id);
+
+-- ============ PACKET ANALYTICS ============
+create table if not exists packet_views (
+  id         bigserial primary key,
+  user_email text not null,
+  packet_id  bigint not null references packets(id) on delete cascade,
+  created_at timestamptz default now()
+);
+create index if not exists idx_pkv_email   on packet_views (user_email);
+create index if not exists idx_pkv_packet  on packet_views (packet_id);
+create index if not exists idx_pkv_created on packet_views (created_at desc);
+
+create table if not exists session_watches (
+  id         bigserial primary key,
+  user_email text not null,
+  session_id bigint not null references packet_sessions(id) on delete cascade,
+  created_at timestamptz default now()
+);
+create index if not exists idx_sw_email   on session_watches (user_email);
+create index if not exists idx_sw_session on session_watches (session_id);
+create index if not exists idx_sw_created on session_watches (created_at desc);
+
 -- ============ RLS ============
 alter table questions   enable row level security;
 alter table assignments enable row level security;
 alter table admins      enable row level security;
 alter table page_views  enable row level security;
 alter table sessions    enable row level security;
+alter table packets              enable row level security;
+alter table packet_sessions      enable row level security;
+alter table packet_session_links enable row level security;
+alter table packet_views         enable row level security;
+alter table session_watches      enable row level security;
+
+create policy "read packets"         on packets              for select using (auth.role() = 'authenticated');
+create policy "read packet sessions" on packet_sessions       for select using (auth.role() = 'authenticated');
+create policy "read packet links"    on packet_session_links  for select using (auth.role() = 'authenticated');
+
+create policy "insert own packet view"   on packet_views    for insert with check (auth.jwt() ->> 'email' = user_email);
+create policy "insert own session watch" on session_watches for insert with check (auth.jwt() ->> 'email' = user_email);
 
 -- Anyone signed-in can read content
 create policy "read questions"   on questions   for select using (auth.role() = 'authenticated');
