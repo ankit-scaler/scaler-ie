@@ -3,12 +3,17 @@ import { useEffect, useState } from "react";
 
 type Packet = { id: number; role: string; yoe: string; doc_title: string | null; doc_link: string | null; sort_order: number };
 
+const emptyDraft = { role: "", yoe: "", doc_title: "", doc_link: "" };
+
 export default function PacketLinksManager() {
   const [packets, setPackets] = useState<Packet[]>([]);
   const [draft, setDraft] = useState<Record<string, string>>({});
   const [savingKey, setSavingKey] = useState<string | null>(null);
   const [loaded, setLoaded] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [newPacket, setNewPacket] = useState(emptyDraft);
+  const [adding, setAdding] = useState(false);
+  const [addError, setAddError] = useState<string | null>(null);
 
   const load = async () => {
     const res = await fetch("/api/admin/packets");
@@ -28,6 +33,32 @@ export default function PacketLinksManager() {
     });
     setPackets(p => p.map(x => x.id === id ? { ...x, doc_link: value || null } : x));
     setSavingKey(null);
+  };
+
+  const addPacket = async () => {
+    if (!newPacket.role.trim() || !newPacket.yoe.trim()) {
+      setAddError("Role and YoE are required.");
+      return;
+    }
+    setAdding(true);
+    setAddError(null);
+    const res = await fetch("/api/admin/packets", {
+      method: "POST", headers: { "content-type": "application/json" },
+      body: JSON.stringify({ action: "create", ...newPacket }),
+    });
+    const j = await res.json().catch(() => ({ ok: false }));
+    if (j.ok) { setNewPacket(emptyDraft); await load(); }
+    else setAddError(j.error || "Couldn't add packet.");
+    setAdding(false);
+  };
+
+  const removePacket = async (id: number) => {
+    if (!confirm("Remove this packet? This also deletes its read history.")) return;
+    await fetch("/api/admin/packets", {
+      method: "POST", headers: { "content-type": "application/json" },
+      body: JSON.stringify({ action: "delete", id }),
+    });
+    setPackets(p => p.filter(x => x.id !== id));
   };
 
   if (!loaded) return null;
@@ -70,9 +101,52 @@ export default function PacketLinksManager() {
                 disabled={savingKey === key}
                 className="rounded-lg border border-edge px-3 py-1.5 text-sm text-mute hover:text-text disabled:opacity-50"
               >{savingKey === key ? "Saving…" : "Save"}</button>
+              <button
+                onClick={() => removePacket(p.id)}
+                className="rounded-lg border border-edge px-3 py-1.5 text-sm text-mute hover:text-devops"
+              >Remove</button>
             </div>
           );
         })}
+      </div>
+
+      <div className="mt-5 border-t border-edge/60 pt-5">
+        <div className="mb-1 text-sm font-medium">Add a new packet</div>
+        <p className="mb-3 text-sm text-mute">Creates a new Role × YoE packet that appears on the Packets page immediately — no SQL needed.</p>
+        {addError && (
+          <div className="mb-3 rounded-xl border border-devops/40 bg-devops/10 px-3 py-2 text-sm text-devops">{addError}</div>
+        )}
+        <div className="flex flex-wrap items-center gap-2">
+          <input
+            value={newPacket.role}
+            onChange={e => setNewPacket(d => ({ ...d, role: e.target.value }))}
+            placeholder="Role (e.g. Backend Engineer)"
+            className="min-w-[180px] flex-1 basis-[200px] rounded-lg border border-edge bg-panel2 px-2.5 py-1.5 text-sm text-text placeholder:text-mute/60 focus:border-acad focus:outline-none"
+          />
+          <input
+            value={newPacket.yoe}
+            onChange={e => setNewPacket(d => ({ ...d, yoe: e.target.value }))}
+            placeholder="YoE (e.g. 2–5 yrs)"
+            className="min-w-[140px] flex-1 basis-[140px] rounded-lg border border-edge bg-panel2 px-2.5 py-1.5 text-sm text-text placeholder:text-mute/60 focus:border-acad focus:outline-none"
+          />
+          <input
+            value={newPacket.doc_title}
+            onChange={e => setNewPacket(d => ({ ...d, doc_title: e.target.value }))}
+            placeholder="Doc title (optional)"
+            className="min-w-[180px] flex-1 basis-[200px] rounded-lg border border-edge bg-panel2 px-2.5 py-1.5 text-sm text-text placeholder:text-mute/60 focus:border-acad focus:outline-none"
+          />
+          <input
+            value={newPacket.doc_link}
+            onChange={e => setNewPacket(d => ({ ...d, doc_link: e.target.value }))}
+            placeholder="https://docs.google.com/... (optional, add later)"
+            className="min-w-[220px] flex-[2] rounded-lg border border-edge bg-panel2 px-2.5 py-1.5 text-sm text-text placeholder:text-mute/60 focus:border-acad focus:outline-none"
+          />
+          <button
+            onClick={addPacket}
+            disabled={adding}
+            className="rounded-lg bg-text px-3.5 py-1.5 text-sm font-medium text-ink transition hover:opacity-90 disabled:opacity-50"
+          >{adding ? "Adding…" : "Add packet"}</button>
+        </div>
       </div>
     </div>
   );

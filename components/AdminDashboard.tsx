@@ -42,6 +42,7 @@ export default function AdminDashboard({ me }: { me: string }) {
   const [newAdmin, setNewAdmin] = useState("");
   const [loading, setLoading]   = useState(false);
   const [breakdownQuery, setBreakdownQuery] = useState("");
+  const [packetQuery, setPacketQuery] = useState("");
 
   const load = async () => {
     setLoading(true);
@@ -99,23 +100,29 @@ export default function AdminDashboard({ me }: { me: string }) {
     return Array.from(map.values()).map(b => ({ day: b.day, views: b.views, users: b.users.size, minutes: Math.round(b.minutes) }));
   }, [data, bucketDays, range, customTo]);
 
+  // Grain is (email, program, company, role) so you can see *who* read what, not just totals.
   const companyRoleBreakdown = useMemo(() => {
     if (!data) return [];
-    const m = new Map<string, { program: string; company: string; role: string; views: number; users: Set<string> }>();
+    const m = new Map<string, { email: string; program: string; company: string; role: string; views: number; first: string; last: string }>();
     data.views.forEach(v => {
       if (!v.company || !v.role) return;
       const company = v.company.trim(), role = v.role.trim(), program = v.program?.trim() || "—";
-      const k = `${program}|${company}|${role}`;
-      const e = m.get(k) || { program, company, role, views: 0, users: new Set<string>() };
-      e.views++; e.users.add(v.user_email);
+      const k = `${v.user_email}|${program}|${company}|${role}`;
+      const e = m.get(k) || { email: v.user_email, program, company, role, views: 0, first: v.created_at, last: v.created_at };
+      e.views++;
+      if (v.created_at < e.first) e.first = v.created_at;
+      if (v.created_at > e.last) e.last = v.created_at;
       m.set(k, e);
     });
-    const rows = Array.from(m.values())
-      .map(e => ({ program: e.program, company: e.company, role: e.role, views: e.views, users: e.users.size }))
-      .sort((a, b) => b.views - a.views);
+    const rows = Array.from(m.values()).sort((a, b) => b.last.localeCompare(a.last));
     const qL = breakdownQuery.trim().toLowerCase();
     if (!qL) return rows;
-    return rows.filter(r => r.company.toLowerCase().includes(qL) || r.role.toLowerCase().includes(qL) || r.program.toLowerCase().includes(qL));
+    return rows.filter(r =>
+      r.email.toLowerCase().includes(qL) ||
+      r.company.toLowerCase().includes(qL) ||
+      r.role.toLowerCase().includes(qL) ||
+      r.program.toLowerCase().includes(qL)
+    );
   }, [data, breakdownQuery]);
 
   const perUser = useMemo(() => {
@@ -138,14 +145,14 @@ export default function AdminDashboard({ me }: { me: string }) {
       .sort((a, b) => b.views - a.views);
   }, [data]);
 
-  // Packets are tracked separately: every open is logged, so re-reading the
-  // same packet twice counts twice for that email (not deduped to "read / not read").
+  // Email-level totals, used for the CSV summary export.
   const packetPerUser = useMemo(() => {
     if (!data) return [];
-    const m = new Map<string, { packetsRead: number; last: string }>();
+    const m = new Map<string, { packetsRead: number; first: string; last: string }>();
     data.packetViews.forEach(v => {
-      const e = m.get(v.user_email) || { packetsRead: 0, last: v.created_at };
+      const e = m.get(v.user_email) || { packetsRead: 0, first: v.created_at, last: v.created_at };
       e.packetsRead++;
+      if (v.created_at < e.first) e.first = v.created_at;
       if (v.created_at > e.last) e.last = v.created_at;
       m.set(v.user_email, e);
     });
@@ -154,16 +161,25 @@ export default function AdminDashboard({ me }: { me: string }) {
       .sort((a, b) => b.packetsRead - a.packetsRead);
   }, [data]);
 
-  const packetRoleBreakdown = useMemo(() => {
+  // Grain is (email, packet) so it's clear *who* read *which* packet, how many times,
+  // and the oldest/most recent read — same shape as the company/role breakdown above.
+  const packetByEmail = useMemo(() => {
     if (!data) return [];
-    const m = new Map<string, number>();
+    const m = new Map<string, { email: string; packet: string; count: number; first: string; last: string }>();
     data.packetViews.forEach(v => {
-      if (!v.role) return;
-      const k = `${v.role} · ${v.yoe || "—"}`;
-      m.set(k, (m.get(k) || 0) + 1);
+      const packet = `${v.role || "—"} · ${v.yoe || "—"}`;
+      const k = `${v.user_email}|${packet}`;
+      const e = m.get(k) || { email: v.user_email, packet, count: 0, first: v.created_at, last: v.created_at };
+      e.count++;
+      if (v.created_at < e.first) e.first = v.created_at;
+      if (v.created_at > e.last) e.last = v.created_at;
+      m.set(k, e);
     });
-    return Array.from(m.entries()).sort((a, b) => b[1] - a[1]).map(([k, v]) => ({ k, v }));
-  }, [data]);
+    const rows = Array.from(m.values()).sort((a, b) => b.last.localeCompare(a.last));
+    const qL = packetQuery.trim().toLowerCase();
+    if (!qL) return rows;
+    return rows.filter(r => r.email.toLowerCase().includes(qL) || r.packet.toLowerCase().includes(qL));
+  }, [data, packetQuery]);
 
   const addAdmin = async () => {
     if (!newAdmin.includes("@")) return;
@@ -197,6 +213,28 @@ export default function AdminDashboard({ me }: { me: string }) {
       ...byEmail.map(u => [u.email, u.views, u.minutes, u.packetsRead, u.last]),
     ];
     downloadCsv(`admin-usage-${range}-${todayStr()}.csv`, rows);
+  };
+
+  const exportCompanyBreakdownCsv = () => {
+    const rows: (string | number)[][] = [
+      ["Program", "Company", "Role", "Email", "First time date", "Last time date", "Count"],
+      ...companyRoleBreakdown.map(r => [
+        r.program, r.company, r.role, r.email,
+        new Date(r.first).toLocaleString(), new Date(r.last).toLocaleString(), r.views,
+      ]),
+    ];
+    downloadCsv(`admin-company-role-breakdown-${range}-${todayStr()}.csv`, rows);
+  };
+
+  const exportPacketBreakdownCsv = () => {
+    const rows: (string | number)[][] = [
+      ["Packet", "Email", "First time date", "Last time date", "Count"],
+      ...packetByEmail.map(r => [
+        r.packet, r.email,
+        new Date(r.first).toLocaleString(), new Date(r.last).toLocaleString(), r.count,
+      ]),
+    ];
+    downloadCsv(`admin-packet-breakdown-${range}-${todayStr()}.csv`, rows);
   };
 
   return (
@@ -273,34 +311,44 @@ export default function AdminDashboard({ me }: { me: string }) {
       </section>
 
       <Card title={`Company & role breakdown (${companyRoleBreakdown.length})`}>
-        <input
-          value={breakdownQuery}
-          onChange={e => setBreakdownQuery(e.target.value)}
-          placeholder="filter by company, role, or program..."
-          className="mb-4 w-full rounded-xl border border-edge bg-panel2 px-3 py-2 text-sm text-text placeholder:text-mute/60 focus:border-acad focus:outline-none"
-        />
+        <div className="mb-4 flex flex-wrap items-center gap-2">
+          <input
+            value={breakdownQuery}
+            onChange={e => setBreakdownQuery(e.target.value)}
+            placeholder="filter by email, company, role, or program..."
+            className="min-w-[220px] flex-1 rounded-xl border border-edge bg-panel2 px-3 py-2 text-sm text-text placeholder:text-mute/60 focus:border-acad focus:outline-none"
+          />
+          <button
+            onClick={exportCompanyBreakdownCsv}
+            className="rounded-xl border border-edge px-3 py-2 text-sm text-mute hover:text-text"
+          >Export CSV</button>
+        </div>
         <div className="max-h-[420px] overflow-y-auto">
           <table className="w-full text-sm">
             <thead className="sticky top-0 bg-panel text-left font-mono text-[11px] uppercase tracking-widest text-mute">
               <tr>
+                <th className="py-2">Email</th>
                 <th className="py-2">Program</th>
                 <th className="py-2">Company</th>
                 <th className="py-2">Role</th>
-                <th className="py-2 text-right">Views</th>
-                <th className="py-2 text-right">Unique users</th>
+                <th className="py-2">First viewed</th>
+                <th className="py-2">Last viewed</th>
+                <th className="py-2 text-right">Count</th>
               </tr>
             </thead>
             <tbody className="divide-y divide-edge/60">
               {companyRoleBreakdown.length === 0 && (
-                <tr><td colSpan={5} className="py-4 text-mute">No views yet in this window.</td></tr>
+                <tr><td colSpan={7} className="py-4 text-mute">No views yet in this window.</td></tr>
               )}
               {companyRoleBreakdown.map(r => (
-                <tr key={`${r.program}|${r.company}|${r.role}`}>
+                <tr key={`${r.email}|${r.program}|${r.company}|${r.role}`}>
+                  <td className="py-2">{r.email}</td>
                   <td className="py-2 font-mono text-xs text-mute">{r.program}</td>
                   <td className="py-2">{r.company}</td>
                   <td className="py-2 text-mute">{r.role}</td>
+                  <td className="py-2 font-mono text-xs text-mute">{new Date(r.first).toLocaleString()}</td>
+                  <td className="py-2 font-mono text-xs text-mute">{new Date(r.last).toLocaleString()}</td>
                   <td className="py-2 text-right font-mono text-xs">{r.views}</td>
-                  <td className="py-2 text-right font-mono text-xs">{r.users}</td>
                 </tr>
               ))}
             </tbody>
@@ -328,44 +376,75 @@ export default function AdminDashboard({ me }: { me: string }) {
         </div>
       </Card>
 
-      <section className="grid grid-cols-1 gap-4 lg:grid-cols-2">
-        <Card title={`Packets — by user (${packetPerUser.length})`}>
-          <div className="max-h-[360px] overflow-y-auto">
-            <table className="w-full text-sm">
-              <thead className="sticky top-0 bg-panel text-left font-mono text-[11px] uppercase tracking-widest text-mute">
-                <tr>
-                  <th className="py-2">Email</th>
-                  <th className="py-2 text-right">Packets read</th>
-                  <th className="py-2">Last activity</th>
+      <Card title={`Packets — by user (${packetPerUser.length})`}>
+        <div className="max-h-[360px] overflow-y-auto">
+          <table className="w-full text-sm">
+            <thead className="sticky top-0 bg-panel text-left font-mono text-[11px] uppercase tracking-widest text-mute">
+              <tr>
+                <th className="py-2">Email</th>
+                <th className="py-2">First activity</th>
+                <th className="py-2">Last activity</th>
+                <th className="py-2 text-right">Packets read</th>
+              </tr>
+            </thead>
+            <tbody className="divide-y divide-edge/60">
+              {packetPerUser.length === 0 && (
+                <tr><td colSpan={4} className="py-4 text-mute">No packet activity yet in this window.</td></tr>
+              )}
+              {packetPerUser.map(u => (
+                <tr key={u.email}>
+                  <td className="py-2">{u.email}</td>
+                  <td className="py-2 font-mono text-xs text-mute">{new Date(u.first).toLocaleString()}</td>
+                  <td className="py-2 font-mono text-xs text-mute">{new Date(u.last).toLocaleString()}</td>
+                  <td className="py-2 text-right font-mono text-xs">{u.packetsRead}</td>
                 </tr>
-              </thead>
-              <tbody className="divide-y divide-edge/60">
-                {packetPerUser.length === 0 && (
-                  <tr><td colSpan={3} className="py-4 text-mute">No packet activity yet in this window.</td></tr>
-                )}
-                {packetPerUser.map(u => (
-                  <tr key={u.email}>
-                    <td className="py-2">{u.email}</td>
-                    <td className="py-2 text-right font-mono text-xs">{u.packetsRead}</td>
-                    <td className="py-2 font-mono text-xs text-mute">{new Date(u.last).toLocaleString()}</td>
-                  </tr>
-                ))}
-              </tbody>
-            </table>
-          </div>
-        </Card>
-        <Card title="Packet reads — by Role & YoE">
-          <div className="divide-y divide-edge/60">
-            {packetRoleBreakdown.length === 0 && <div className="py-4 text-sm text-mute">No packet reads yet in this window.</div>}
-            {packetRoleBreakdown.map(r => (
-              <div key={r.k} className="flex items-center justify-between py-2.5">
-                <span className="text-sm">{r.k}</span>
-                <span className="font-mono text-xs text-mute">{r.v}</span>
-              </div>
-            ))}
-          </div>
-        </Card>
-      </section>
+              ))}
+            </tbody>
+          </table>
+        </div>
+      </Card>
+
+      <Card title={`Packet reads — by learner (${packetByEmail.length})`}>
+        <div className="mb-4 flex flex-wrap items-center gap-2">
+          <input
+            value={packetQuery}
+            onChange={e => setPacketQuery(e.target.value)}
+            placeholder="filter by email or packet..."
+            className="min-w-[220px] flex-1 rounded-xl border border-edge bg-panel2 px-3 py-2 text-sm text-text placeholder:text-mute/60 focus:border-acad focus:outline-none"
+          />
+          <button
+            onClick={exportPacketBreakdownCsv}
+            className="rounded-xl border border-edge px-3 py-2 text-sm text-mute hover:text-text"
+          >Export CSV</button>
+        </div>
+        <div className="max-h-[420px] overflow-y-auto">
+          <table className="w-full text-sm">
+            <thead className="sticky top-0 bg-panel text-left font-mono text-[11px] uppercase tracking-widest text-mute">
+              <tr>
+                <th className="py-2">Email</th>
+                <th className="py-2">Packet</th>
+                <th className="py-2">First read</th>
+                <th className="py-2">Last read</th>
+                <th className="py-2 text-right">Count</th>
+              </tr>
+            </thead>
+            <tbody className="divide-y divide-edge/60">
+              {packetByEmail.length === 0 && (
+                <tr><td colSpan={5} className="py-4 text-mute">No packet reads yet in this window.</td></tr>
+              )}
+              {packetByEmail.map(r => (
+                <tr key={`${r.email}|${r.packet}`}>
+                  <td className="py-2">{r.email}</td>
+                  <td className="py-2 text-mute">{r.packet}</td>
+                  <td className="py-2 font-mono text-xs text-mute">{new Date(r.first).toLocaleString()}</td>
+                  <td className="py-2 font-mono text-xs text-mute">{new Date(r.last).toLocaleString()}</td>
+                  <td className="py-2 text-right font-mono text-xs">{r.count}</td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        </div>
+      </Card>
 
       <PacketLinksManager />
 
