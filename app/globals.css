@@ -1,0 +1,26 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+:root { color-scheme: dark; }
+html, body { background: #0B0D12; }
+
+/* subtle noise for depth */
+body::before {
+  content: "";
+  position: fixed; inset: 0; pointer-events: none; z-index: -1;
+  background-image: radial-gradient(rgba(255,255,255,.02) 1px, transparent 1px);
+  background-size: 3px 3px;
+}
+
+/* scrollbar */
+::-webkit-scrollbar { width: 10px; height: 10px; }
+::-webkit-scrollbar-thumb { background: #232937; border-radius: 8px; }
+::-webkit-scrollbar-track { background: transparent; }
+
+/* focus */
+:focus-visible { outline: 2px solid #5B9DFF; outline-offset: 2px; border-radius: 4px; }
+
+@media (prefers-reduced-motion: reduce) {
+  * { animation: none !important; transition: none !important; }
+}
