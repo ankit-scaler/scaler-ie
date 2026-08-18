@@ -1,4 +1,4 @@
-import { createServerClient } from "@supabase/ssr";
+import { createServerClient, type CookieOptions } from "@supabase/ssr";
 import { createClient } from "@supabase/supabase-js";
 import { cookies } from "next/headers";
 
@@ -9,9 +9,9 @@ export const supabaseServer = () => {
     process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!,
     {
       cookies: {
-        get:    (n) => store.get(n)?.value,
-        set:    (n, v, o) => { try { store.set({ name: n, value: v, ...o }); } catch {} },
-        remove: (n, o)    => { try { store.set({ name: n, value: "", ...o }); } catch {} },
+        get:    (n: string) => store.get(n)?.value,
+        set:    (n: string, v: string, o: CookieOptions) => { try { store.set({ name: n, value: v, ...o }); } catch {} },
+        remove: (n: string, o: CookieOptions)    => { try { store.set({ name: n, value: "", ...o }); } catch {} },
       },
     }
   );
