@@ -1,5 +1,6 @@
 "use client";
 import { supabaseBrowser } from "@/lib/supabase-browser";
+import ScalerLogo from "@/components/ScalerLogo";
 
 export default function LoginPage() {
   const signIn = async () => {
@@ -11,6 +12,7 @@ export default function LoginPage() {
   };
   return (
     <div className="mx-auto flex min-h-[70vh] max-w-md flex-col items-center justify-center text-center">
+      <ScalerLogo className="mb-8 h-7 w-auto text-text" />
       <h1 className="mb-3 font-display text-4xl leading-tight">
         Real questions.<br />From real Scaler learners.
       </h1>
@@ -23,7 +25,6 @@ export default function LoginPage() {
         Continue with Google
       </button>
       <p className="mt-6 font-mono text-[11px] uppercase tracking-widest text-mute">Get Set Prepare</p>
-      <p className="mt-6 font-mono text-[11px] uppercase tracking-widest text-mute">For any issues Reach out to ankit.mishra@scaler.com</p>
     </div>
   );
 }

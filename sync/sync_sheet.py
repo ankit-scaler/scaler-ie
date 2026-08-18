@@ -101,6 +101,7 @@ def main():
             relevant= get_col(row, "Is Question Relevant").lower()
             if not (company and role and question): continue
             if relevant in ("false", "no", "0"): continue
+            if len(question.split()) < 5: continue
             q_rows.append({
                 "program": program or tab_name.split("|")[-1].strip(),
                 "company": company,

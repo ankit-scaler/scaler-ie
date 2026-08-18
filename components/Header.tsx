@@ -4,6 +4,7 @@ import { usePathname, useRouter } from "next/navigation";
 import { useEffect, useState } from "react";
 import { supabaseBrowser } from "@/lib/supabase-browser";
 import ThemeToggle from "./ThemeToggle";
+import ScalerLogo from "./ScalerLogo";
 
 export default function Header() {
   const [email, setEmail]   = useState<string | null>(null);
@@ -26,10 +27,10 @@ export default function Header() {
   const tab = (href: string, label: string) => (
     <Link
       href={href}
-      className={`whitespace-nowrap rounded-full px-4 py-1.5 text-sm transition ${
+      className={`whitespace-nowrap rounded-full border px-4 py-1.5 text-sm transition ${
         path === href
-          ? "bg-panel2 text-text shadow-card"
-          : "text-mute hover:text-text"
+          ? "border-edge bg-panel2 text-text"
+          : "border-transparent text-mute hover:text-text"
       }`}
     >
       {label}
@@ -40,8 +41,8 @@ export default function Header() {
     <header className="sticky top-0 z-40 border-b border-edge/60 bg-ink/70 backdrop-blur-xl">
       <div className="mx-auto flex max-w-7xl items-center justify-between px-4 py-3 sm:px-6">
         <Link href="/" className="flex items-center gap-2.5">
-          <span className="grid h-8 w-8 place-items-center rounded-lg bg-gradient-to-br from-acad to-dsml text-sm font-bold text-ink">S</span>
-          <span className="font-display text-xl leading-none">Interview Vault</span>
+          <ScalerLogo className="h-6 w-auto text-text" />
+          <span className="hidden font-display text-xl leading-none sm:inline">Interview Vault</span>
         </Link>
         <nav className="flex items-center gap-1 overflow-x-auto">
           {tab("/", "Questions")}
