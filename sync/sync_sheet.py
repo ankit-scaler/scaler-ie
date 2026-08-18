@@ -1,7 +1,6 @@
 """
 Daily sync: Google Sheet -> Supabase.
-Reads 4 Question tabs + Assignments tab, upserts by fingerprint.
-Env: GOOGLE_CREDS_JSON, SHEET_ID, SUPABASE_URL, SUPABASE_SERVICE_KEY
+Reads 4 Question tabs + Assignments tab, dedupes, upserts by fingerprint.
 """
 import os, json, hashlib, sys
 from datetime import datetime
@@ -23,15 +22,14 @@ QUESTION_TABS = {
 ASSIGNMENT_TAB = "Assignments"
 
 def norm(s):
-    return (s or "").strip() if isinstance(s, str) else (str(s).strip() if s is not None else "")
+    if s is None: return ""
+    return str(s).strip()
 
 def fp(*parts):
     return hashlib.sha256("||".join(str(p or "") for p in parts).encode()).hexdigest()
 
 def dedupe_headers(headers):
-    """Make duplicate/blank headers unique so gspread doesn't choke."""
-    seen = {}
-    out = []
+    seen, out = {}, []
     for i, h in enumerate(headers):
         h = (h or "").strip() or f"_col{i}"
         if h in seen:
@@ -43,12 +41,20 @@ def dedupe_headers(headers):
     return out
 
 def get_col(row, name):
-    """Look up a column tolerantly (strip + case-insensitive on the key)."""
     target = name.strip().lower()
     for k, v in row.items():
         if k.strip().lower() == target:
             return norm(v)
     return ""
+
+def dedupe_by_fp(rows):
+    seen, out = set(), []
+    for r in rows:
+        f = r["fingerprint"]
+        if f in seen: continue
+        seen.add(f)
+        out.append(r)
+    return out
 
 def get_hyperlink(ws, cell_a1):
     try:
@@ -82,8 +88,7 @@ def main():
             print(f"skip {tab_name}: {e}", file=sys.stderr); continue
 
         all_vals = ws.get_all_values()
-        if not all_vals:
-            print(f"empty {tab_name}"); continue
+        if not all_vals: continue
         headers = dedupe_headers(all_vals[0])
         for raw in all_vals[1:]:
             row = dict(zip(headers, raw + [""] * (len(headers) - len(raw))))
@@ -95,7 +100,7 @@ def main():
             topic   = get_col(row, "Related Topic")
             relevant= get_col(row, "Is Question Relevant").lower()
             if not (company and role and question): continue
-            if relevant in ("false","no","0"): continue
+            if relevant in ("false", "no", "0"): continue
             q_rows.append({
                 "program": program or tab_name.split("|")[-1].strip(),
                 "company": company,
@@ -105,8 +110,10 @@ def main():
                 "related_topic": topic,
                 "fingerprint": fp(program, company, role, rnd, question),
             })
-        print(f"{tab_name}: added rows so far {len(q_rows)}")
-    print(f"total questions: {len(q_rows)}")
+        print(f"{tab_name}: cumulative {len(q_rows)}")
+
+    q_rows = dedupe_by_fp(q_rows)
+    print(f"total unique questions: {len(q_rows)}")
 
     for i in range(0, len(q_rows), 500):
         supa.table("questions").upsert(q_rows[i:i+500], on_conflict="fingerprint").execute()
@@ -115,38 +122,38 @@ def main():
     try:
         ws = sh.worksheet(ASSIGNMENT_TAB)
         all_vals = ws.get_all_values()
-        if not all_vals:
-            print("empty assignments"); return
-        headers = dedupe_headers(all_vals[0])
-        link_col_idx = None
-        for i, h in enumerate(headers):
-            if "assignment link" in h.lower():
-                link_col_idx = i; break
+        if all_vals:
+            headers = dedupe_headers(all_vals[0])
+            link_col_idx = None
+            for i, h in enumerate(headers):
+                if "assignment link" in h.lower():
+                    link_col_idx = i; break
 
-        a_rows = []
-        for row_i, raw in enumerate(all_vals[1:], start=2):
-            row = dict(zip(headers, raw + [""] * (len(headers) - len(raw))))
-            company = get_col(row, "Company")
-            role    = get_col(row, "Role")
-            program = get_col(row, "Program")
-            rnd     = get_col(row, "# Round") or get_col(row, "Round")
-            link_txt = raw[link_col_idx] if link_col_idx is not None and link_col_idx < len(raw) else ""
-            link = None
-            if link_col_idx is not None:
-                a1 = gspread.utils.rowcol_to_a1(row_i, link_col_idx + 1)
-                link = get_hyperlink(ws, a1) or link_txt
-            if not (company and role): continue
-            a_rows.append({
-                "program": program,
-                "company": company,
-                "role": role,
-                "round": rnd,
-                "link": link,
-                "fingerprint": fp(program, company, role, rnd, link),
-            })
-        print(f"assignments: {len(a_rows)}")
-        for i in range(0, len(a_rows), 500):
-            supa.table("assignments").upsert(a_rows[i:i+500], on_conflict="fingerprint").execute()
+            a_rows = []
+            for row_i, raw in enumerate(all_vals[1:], start=2):
+                row = dict(zip(headers, raw + [""] * (len(headers) - len(raw))))
+                company = get_col(row, "Company")
+                role    = get_col(row, "Role")
+                program = get_col(row, "Program")
+                rnd     = get_col(row, "# Round") or get_col(row, "Round")
+                link_txt = raw[link_col_idx] if link_col_idx is not None and link_col_idx < len(raw) else ""
+                link = None
+                if link_col_idx is not None:
+                    a1 = gspread.utils.rowcol_to_a1(row_i, link_col_idx + 1)
+                    link = get_hyperlink(ws, a1) or link_txt
+                if not (company and role): continue
+                a_rows.append({
+                    "program": program,
+                    "company": company,
+                    "role": role,
+                    "round": rnd,
+                    "link": link,
+                    "fingerprint": fp(program, company, role, rnd, link),
+                })
+            a_rows = dedupe_by_fp(a_rows)
+            print(f"unique assignments: {len(a_rows)}")
+            for i in range(0, len(a_rows), 500):
+                supa.table("assignments").upsert(a_rows[i:i+500], on_conflict="fingerprint").execute()
     except Exception as e:
         print(f"assignments error: {e}", file=sys.stderr)
 
