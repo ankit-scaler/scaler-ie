@@ -3,6 +3,7 @@ import { useEffect, useMemo, useState } from "react";
 import { BarChart, Bar, XAxis, YAxis, Tooltip, ResponsiveContainer, LineChart, Line, CartesianGrid } from "recharts";
 import { FlightSpinner } from "./FlightLoader";
 import PacketLinksManager from "./PacketLinksManager";
+import AssignmentsManager from "./AssignmentsManager";
 
 type Stats = {
   views: { user_email: string; company: string | null; role: string | null; program: string | null; created_at: string }[];
@@ -447,6 +448,8 @@ export default function AdminDashboard({ me }: { me: string }) {
       </Card>
 
       <PacketLinksManager />
+
+      <AssignmentsManager />
 
       <Card title="Admins">
         <div className="mb-4 flex flex-wrap gap-2">
