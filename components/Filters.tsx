@@ -40,7 +40,7 @@ export default function Filters({
   const Pill = ({ value, active, onClick }: { value: string; active: boolean; onClick: () => void }) => (
     <button
       onClick={onClick}
-      className={`whitespace-nowrap rounded-full border px-3 py-1.5 text-xs transition ${
+      className={`whitespace-nowrap rounded-full border px-3 py-1.5 text-sm transition ${
         active ? "border-text bg-text text-ink" : "border-edge text-mute hover:border-text/40 hover:text-text"
       }`}
     >{value}</button>
@@ -50,7 +50,7 @@ export default function Filters({
     label: string; value: string; options: string[]; onChange: (v: string) => void;
   }) => (
     <label className="flex min-w-0 flex-col gap-1.5">
-      <span className="font-mono text-[10px] uppercase tracking-widest text-mute">{label}</span>
+      <span className="font-mono text-[11px] uppercase tracking-widest text-mute">{label}</span>
       <div className="relative">
         <select
           value={value}
@@ -84,7 +84,7 @@ export default function Filters({
             onChange={v => setState({ ...state, round: v })} />
         )}
         <label className="flex flex-col gap-1.5">
-          <span className="font-mono text-[10px] uppercase tracking-widest text-mute">Search</span>
+          <span className="font-mono text-[11px] uppercase tracking-widest text-mute">Search</span>
           <input
             value={state.q}
             onChange={e => setState({ ...state, q: e.target.value })}

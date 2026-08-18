@@ -17,7 +17,7 @@ export default function AssignmentCard({
       className="group relative overflow-hidden rounded-2xl border border-edge bg-panel p-5 shadow-card transition-shadow hover:shadow-cardH"
     >
       <div className="absolute inset-x-0 top-0 h-px bg-gradient-to-r from-aiml/60 to-transparent" />
-      <div className="mb-3 flex flex-wrap gap-2 text-[11px]">
+      <div className="mb-3 flex flex-wrap gap-2 text-xs">
         {a.program && <span className="rounded-full border border-edge bg-panel2 px-2.5 py-0.5 font-mono text-mute">{a.program}</span>}
         <span className="rounded-full border border-edge bg-panel2 px-2.5 py-0.5 font-mono">{a.company.trim()}</span>
         <span className="rounded-full border border-edge bg-panel2 px-2.5 py-0.5 font-mono text-mute">{a.role.trim()}</span>

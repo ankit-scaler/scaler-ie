@@ -3,6 +3,7 @@ import Link from "next/link";
 import { usePathname, useRouter } from "next/navigation";
 import { useEffect, useState } from "react";
 import { supabaseBrowser } from "@/lib/supabase-browser";
+import ThemeToggle from "./ThemeToggle";
 
 export default function Header() {
   const [email, setEmail]   = useState<string | null>(null);
@@ -48,16 +49,17 @@ export default function Header() {
           {isAdmin && tab("/admin", "Admin")}
         </nav>
         <div className="flex items-center gap-3">
+          <ThemeToggle />
           {email ? (
             <>
-              <span className="hidden text-xs text-mute sm:inline">{email}</span>
+              <span className="hidden text-sm text-mute sm:inline">{email}</span>
               <button
                 onClick={async () => { await sb.auth.signOut(); router.push("/login"); }}
-                className="rounded-full border border-edge px-3 py-1.5 text-xs text-mute hover:text-text"
+                className="rounded-full border border-edge px-3 py-1.5 text-sm text-mute hover:text-text"
               >Sign out</button>
             </>
           ) : (
-            <Link href="/login" className="rounded-full bg-text px-3 py-1.5 text-xs font-medium text-ink">
+            <Link href="/login" className="rounded-full bg-text px-3 py-1.5 text-sm font-medium text-ink">
               Sign in
             </Link>
           )}

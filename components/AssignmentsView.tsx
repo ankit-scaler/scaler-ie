@@ -40,7 +40,7 @@ export default function AssignmentsView({ initial }: { initial: A[] }) {
   return (
     <div className="space-y-8">
       <section>
-        <span className="font-mono text-[10px] uppercase tracking-widest text-mute">Take-home tasks</span>
+        <span className="font-mono text-[11px] uppercase tracking-widest text-mute">Take-home tasks</span>
         <h1 className="mt-1 font-display text-4xl leading-tight sm:text-5xl">
           Assignments,<br /><span className="text-mute">by company and role.</span>
         </h1>
@@ -49,7 +49,7 @@ export default function AssignmentsView({ initial }: { initial: A[] }) {
       <Filters data={filterData} state={state} setState={setState} showRound={false} />
 
       <section>
-        <div className="mb-3 font-mono text-xs text-mute">
+        <div className="mb-3 font-mono text-sm text-mute">
           {filtered.length.toLocaleString()} assignment{filtered.length === 1 ? "" : "s"}
         </div>
         {filtered.length === 0 ? (

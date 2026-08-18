@@ -30,7 +30,7 @@ export default function QuestionCard({
       className="group relative overflow-hidden rounded-2xl border border-edge bg-panel p-5 shadow-card transition-shadow hover:shadow-cardH"
     >
       <div className={`absolute inset-x-0 top-0 h-px bg-gradient-to-r ${PROG_COLOR[prog]}`} />
-      <div className="mb-3 flex flex-wrap items-center gap-2 text-[11px]">
+      <div className="mb-3 flex flex-wrap items-center gap-2 text-xs">
         <span className="inline-flex items-center gap-1.5 rounded-full border border-edge bg-panel2 px-2.5 py-0.5 font-mono">
           <span className={`h-1.5 w-1.5 rounded-full ${DOT[prog]}`} />{q.program}
         </span>
@@ -38,10 +38,10 @@ export default function QuestionCard({
         <span className="rounded-full border border-edge bg-panel2 px-2.5 py-0.5 font-mono text-mute">{q.role.trim()}</span>
         {q.round && <span className="rounded-full border border-edge bg-panel2 px-2.5 py-0.5 font-mono text-mute">{q.round}</span>}
       </div>
-      <p className="whitespace-pre-wrap text-[15px] leading-relaxed text-text">{q.question}</p>
+      <p className="whitespace-pre-wrap text-base leading-relaxed text-text">{q.question}</p>
       {q.related_topic && (
-        <div className="mt-4 flex items-center gap-2 border-t border-edge/60 pt-3 text-xs text-mute">
-          <span className="font-mono uppercase tracking-widest text-[10px]">Topic</span>
+        <div className="mt-4 flex items-center gap-2 border-t border-edge/60 pt-3 text-sm text-mute">
+          <span className="font-mono uppercase tracking-widest text-[11px]">Topic</span>
           <span className="text-text/80">{q.related_topic}</span>
         </div>
       )}

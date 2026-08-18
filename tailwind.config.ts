@@ -4,16 +4,16 @@ export default {
   theme: {
     extend: {
       colors: {
-        ink:    "#0B0D12",
-        panel:  "#12151C",
-        panel2: "#171B24",
-        edge:   "#232937",
-        text:   "#E7EAF0",
-        mute:   "#8A91A0",
-        acad:   "#5B9DFF",
-        dsml:   "#B57BFF",
-        aiml:   "#5FE3B1",
-        devops: "#FF9B5A",
+        ink:    "rgb(var(--ink) / <alpha-value>)",
+        panel:  "rgb(var(--panel) / <alpha-value>)",
+        panel2: "rgb(var(--panel2) / <alpha-value>)",
+        edge:   "rgb(var(--edge) / <alpha-value>)",
+        text:   "rgb(var(--text) / <alpha-value>)",
+        mute:   "rgb(var(--mute) / <alpha-value>)",
+        acad:   "rgb(var(--acad) / <alpha-value>)",
+        dsml:   "rgb(var(--dsml) / <alpha-value>)",
+        aiml:   "rgb(var(--aiml) / <alpha-value>)",
+        devops: "rgb(var(--devops) / <alpha-value>)",
       },
       fontFamily: {
         display: ['"Instrument Serif"', "serif"],
