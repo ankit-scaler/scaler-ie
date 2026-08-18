@@ -1,8 +1,7 @@
 "use client";
 import { useMemo, useState } from "react";
 
-type Session = { id: number; title: string; url: string | null };
-type Packet = { id: number; role: string; yoe: string; doc_link: string | null; sort_order: number; sessions: Session[] };
+type Packet = { id: number; role: string; yoe: string; doc_link: string | null; sort_order: number };
 
 export default function PacketsView({ packets }: { packets: Packet[] }) {
   const roles = useMemo(() => ["All", ...Array.from(new Set(packets.map(p => p.role)))], [packets]);
@@ -11,8 +10,6 @@ export default function PacketsView({ packets }: { packets: Packet[] }) {
 
   const trackPacket = (id: number) =>
     fetch("/api/track-packet", { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify({ packet_id: id }) }).catch(() => {});
-  const trackSession = (id: number) =>
-    fetch("/api/track-session", { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify({ session_id: id }) }).catch(() => {});
 
   return (
     <div className="space-y-8">
@@ -42,12 +39,7 @@ export default function PacketsView({ packets }: { packets: Packet[] }) {
       ) : (
         <div className="grid grid-cols-1 gap-4 md:grid-cols-2 xl:grid-cols-3">
           {filtered.map(p => (
-            <PacketCard
-              key={p.id}
-              packet={p}
-              onOpenPacket={() => trackPacket(p.id)}
-              onWatchSession={trackSession}
-            />
+            <PacketCard key={p.id} packet={p} onOpenPacket={() => trackPacket(p.id)} />
           ))}
         </div>
       )}
@@ -55,13 +47,7 @@ export default function PacketsView({ packets }: { packets: Packet[] }) {
   );
 }
 
-function PacketCard({
-  packet, onOpenPacket, onWatchSession,
-}: {
-  packet: Packet;
-  onOpenPacket: () => void;
-  onWatchSession: (id: number) => void;
-}) {
+function PacketCard({ packet, onOpenPacket }: { packet: Packet; onOpenPacket: () => void }) {
   const hasDoc = packet.doc_link && /^https?:\/\//i.test(packet.doc_link);
   return (
     <article className="group relative overflow-hidden rounded-2xl border border-edge bg-panel p-5 shadow-card transition-shadow hover:shadow-cardH">
@@ -86,32 +72,6 @@ function PacketCard({
         <span className="inline-flex items-center gap-2 rounded-xl border border-edge/60 bg-panel2/50 px-3.5 py-2 text-sm text-mute">
           Coming soon
         </span>
-      )}
-
-      {packet.sessions.length > 0 && (
-        <div className="mt-5 border-t border-edge/60 pt-4">
-          <div className="mb-2 font-mono text-[11px] uppercase tracking-widest text-mute">
-            Watch these to brush up your concepts
-          </div>
-          <div className="flex flex-wrap gap-1.5">
-            {packet.sessions.map(s => {
-              const hasUrl = s.url && /^https?:\/\//i.test(s.url);
-              return hasUrl ? (
-                <a
-                  key={s.id}
-                  href={s.url!}
-                  target="_blank" rel="noreferrer"
-                  onClick={() => onWatchSession(s.id)}
-                  className="rounded-full border border-edge bg-panel2 px-2.5 py-1 text-xs text-text transition hover:border-text/40"
-                >{s.title}</a>
-              ) : (
-                <span key={s.id} className="rounded-full border border-edge/60 bg-panel2/50 px-2.5 py-1 text-xs text-mute">
-                  {s.title}
-                </span>
-              );
-            })}
-          </div>
-        </div>
       )}
     </article>
   );

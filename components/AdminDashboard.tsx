@@ -9,7 +9,6 @@ type Stats = {
   sessions: { user_email: string; duration_sec: number; started_at: string }[];
   admins: { email: string; added_at: string; added_by: string | null }[];
   packetViews: { user_email: string; created_at: string; role: string | null; yoe: string | null }[];
-  sessionWatches: { user_email: string; created_at: string; title: string | null }[];
 };
 
 const RANGES = [
@@ -139,26 +138,20 @@ export default function AdminDashboard({ me }: { me: string }) {
       .sort((a, b) => b.views - a.views);
   }, [data]);
 
-  // Packets are tracked separately: every open/watch is logged, so re-reading the
+  // Packets are tracked separately: every open is logged, so re-reading the
   // same packet twice counts twice for that email (not deduped to "read / not read").
   const packetPerUser = useMemo(() => {
     if (!data) return [];
-    const m = new Map<string, { packetsRead: number; sessionsWatched: number; last: string }>();
+    const m = new Map<string, { packetsRead: number; last: string }>();
     data.packetViews.forEach(v => {
-      const e = m.get(v.user_email) || { packetsRead: 0, sessionsWatched: 0, last: v.created_at };
+      const e = m.get(v.user_email) || { packetsRead: 0, last: v.created_at };
       e.packetsRead++;
       if (v.created_at > e.last) e.last = v.created_at;
       m.set(v.user_email, e);
     });
-    data.sessionWatches.forEach(s => {
-      const e = m.get(s.user_email) || { packetsRead: 0, sessionsWatched: 0, last: s.created_at };
-      e.sessionsWatched++;
-      if (s.created_at > e.last) e.last = s.created_at;
-      m.set(s.user_email, e);
-    });
     return Array.from(m.entries())
       .map(([email, e]) => ({ email, ...e }))
-      .sort((a, b) => (b.packetsRead + b.sessionsWatched) - (a.packetsRead + a.sessionsWatched));
+      .sort((a, b) => b.packetsRead - a.packetsRead);
   }, [data]);
 
   const packetRoleBreakdown = useMemo(() => {
@@ -195,14 +188,13 @@ export default function AdminDashboard({ me }: { me: string }) {
         views: u?.views ?? 0,
         minutes: u?.minutes ?? 0,
         packetsRead: p?.packetsRead ?? 0,
-        sessionsWatched: p?.sessionsWatched ?? 0,
         last: last ? new Date(last).toLocaleString() : "",
       };
     }).sort((a, b) => a.email.localeCompare(b.email));
 
     const rows: (string | number)[][] = [
-      ["Email", "Views", "Minutes", "Packets Read", "Sessions Watched", "Last Activity"],
-      ...byEmail.map(u => [u.email, u.views, u.minutes, u.packetsRead, u.sessionsWatched, u.last]),
+      ["Email", "Views", "Minutes", "Packets Read", "Last Activity"],
+      ...byEmail.map(u => [u.email, u.views, u.minutes, u.packetsRead, u.last]),
     ];
     downloadCsv(`admin-usage-${range}-${todayStr()}.csv`, rows);
   };
@@ -337,26 +329,24 @@ export default function AdminDashboard({ me }: { me: string }) {
       </Card>
 
       <section className="grid grid-cols-1 gap-4 lg:grid-cols-2">
-        <Card title={`Packets & sessions — by user (${packetPerUser.length})`}>
+        <Card title={`Packets — by user (${packetPerUser.length})`}>
           <div className="max-h-[360px] overflow-y-auto">
             <table className="w-full text-sm">
               <thead className="sticky top-0 bg-panel text-left font-mono text-[11px] uppercase tracking-widest text-mute">
                 <tr>
                   <th className="py-2">Email</th>
                   <th className="py-2 text-right">Packets read</th>
-                  <th className="py-2 text-right">Sessions watched</th>
                   <th className="py-2">Last activity</th>
                 </tr>
               </thead>
               <tbody className="divide-y divide-edge/60">
                 {packetPerUser.length === 0 && (
-                  <tr><td colSpan={4} className="py-4 text-mute">No packet activity yet in this window.</td></tr>
+                  <tr><td colSpan={3} className="py-4 text-mute">No packet activity yet in this window.</td></tr>
                 )}
                 {packetPerUser.map(u => (
                   <tr key={u.email}>
                     <td className="py-2">{u.email}</td>
                     <td className="py-2 text-right font-mono text-xs">{u.packetsRead}</td>
-                    <td className="py-2 text-right font-mono text-xs">{u.sessionsWatched}</td>
                     <td className="py-2 font-mono text-xs text-mute">{new Date(u.last).toLocaleString()}</td>
                   </tr>
                 ))}

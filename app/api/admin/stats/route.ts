@@ -30,23 +30,20 @@ export async function GET(req: Request) {
   }
 
   const admin = supabaseAdmin();
-  let viewsQ    = admin.from("page_views").select("user_email,company,role,program,created_at").gte("created_at", since);
-  let sessionsQ = admin.from("sessions").select("user_email,duration_sec,started_at").gte("started_at", since);
-  let packetViewsQ    = admin.from("packet_views").select("user_email,created_at,packets(role,yoe)").gte("created_at", since);
-  let sessionWatchesQ = admin.from("session_watches").select("user_email,created_at,packet_sessions(title)").gte("created_at", since);
+  let viewsQ       = admin.from("page_views").select("user_email,company,role,program,created_at").gte("created_at", since);
+  let sessionsQ    = admin.from("sessions").select("user_email,duration_sec,started_at").gte("started_at", since);
+  let packetViewsQ = admin.from("packet_views").select("user_email,created_at,packets(role,yoe)").gte("created_at", since);
   if (until) {
-    viewsQ           = viewsQ.lte("created_at", until);
-    sessionsQ        = sessionsQ.lte("started_at", until);
-    packetViewsQ     = packetViewsQ.lte("created_at", until);
-    sessionWatchesQ  = sessionWatchesQ.lte("created_at", until);
+    viewsQ       = viewsQ.lte("created_at", until);
+    sessionsQ    = sessionsQ.lte("started_at", until);
+    packetViewsQ = packetViewsQ.lte("created_at", until);
   }
 
-  const [views, sessions, admins, packetViews, sessionWatches] = await Promise.all([
+  const [views, sessions, admins, packetViews] = await Promise.all([
     viewsQ,
     sessionsQ,
     admin.from("admins").select("email,added_at,added_by").order("added_at", { ascending: true }),
     packetViewsQ,
-    sessionWatchesQ,
   ]);
 
   return NextResponse.json({
@@ -58,10 +55,6 @@ export async function GET(req: Request) {
     packetViews: (packetViews.data || []).map((r: any) => ({
       user_email: r.user_email, created_at: r.created_at,
       role: r.packets?.role ?? null, yoe: r.packets?.yoe ?? null,
-    })),
-    sessionWatches: (sessionWatches.data || []).map((r: any) => ({
-      user_email: r.user_email, created_at: r.created_at,
-      title: r.packet_sessions?.title ?? null,
     })),
   });
 }
