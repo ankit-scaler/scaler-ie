@@ -51,8 +51,9 @@ export default function LearnerAccessManager() {
     : learners;
 
   return (
-    <div className="rounded-2xl border border-edge bg-panel p-5 shadow-card">
-      <div className="mb-1 font-mono text-[11px] uppercase tracking-widest text-mute">Learner access</div>
+    <div className="relative overflow-hidden rounded-2xl border border-edge bg-panel p-5 shadow-card">
+      <div className="absolute inset-x-0 top-0 h-[3px] bg-devops" />
+      <div className="mb-1 font-mono text-xs font-bold uppercase tracking-widest text-devops">Learner access</div>
       <p className="mb-4 text-sm text-mute">
         Any @scaler.com email can always sign in. Everyone else needs to be here (or in Admins) —
         most are synced nightly from the tracking sheet. Grant access to someone not yet on that

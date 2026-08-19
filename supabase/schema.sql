@@ -93,6 +93,28 @@ create index if not exists idx_pkv_email   on packet_views (user_email);
 create index if not exists idx_pkv_packet  on packet_views (packet_id);
 create index if not exists idx_pkv_created on packet_views (created_at desc);
 
+-- ============ VIDEO RESOURCES (per Role x YoE, like packets) ============
+create table if not exists video_resources (
+  id         bigserial primary key,
+  packet_id  bigint not null references packets(id) on delete cascade,
+  topic      text not null,
+  video_link text,
+  sort_order int not null default 0,
+  created_at timestamptz default now(),
+  unique (packet_id, topic)
+);
+create index if not exists idx_vr_packet on video_resources (packet_id);
+
+create table if not exists video_resource_views (
+  id                bigserial primary key,
+  user_email        text not null,
+  video_resource_id bigint not null references video_resources(id) on delete cascade,
+  created_at        timestamptz default now()
+);
+create index if not exists idx_vrv_email    on video_resource_views (user_email);
+create index if not exists idx_vrv_resource on video_resource_views (video_resource_id);
+create index if not exists idx_vrv_created  on video_resource_views (created_at desc);
+
 -- ============ ASSIGNMENT ANALYTICS ============
 create table if not exists assignment_views (
   id            bigserial primary key,
@@ -124,6 +146,8 @@ alter table page_views  enable row level security;
 alter table sessions    enable row level security;
 alter table packets              enable row level security;
 alter table packet_views         enable row level security;
+alter table video_resources      enable row level security;
+alter table video_resource_views enable row level security;
 alter table assignment_views     enable row level security;
 alter table allowed_learners     enable row level security;
 
@@ -133,6 +157,8 @@ alter table allowed_learners     enable row level security;
 -- safe to paste and re-run any number of times.
 drop policy if exists "read packets"         on packets;
 drop policy if exists "insert own packet view"   on packet_views;
+drop policy if exists "read video resources" on video_resources;
+drop policy if exists "insert own video resource view" on video_resource_views;
 drop policy if exists "insert own assignment view" on assignment_views;
 drop policy if exists "read questions"   on questions;
 drop policy if exists "read assignments" on assignments;
@@ -142,6 +168,8 @@ drop policy if exists "admins read self" on admins;
 
 create policy "read packets" on packets for select using (auth.role() = 'authenticated');
 create policy "insert own packet view" on packet_views for insert with check (auth.jwt() ->> 'email' = user_email);
+create policy "read video resources" on video_resources for select using (auth.role() = 'authenticated');
+create policy "insert own video resource view" on video_resource_views for insert with check (auth.jwt() ->> 'email' = user_email);
 create policy "insert own assignment view" on assignment_views for insert with check (auth.jwt() ->> 'email' = user_email);
 -- allowed_learners has no policies: only the service-role client (auth
 -- callback, sync job) ever touches it, so RLS with zero policies is exactly

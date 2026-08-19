@@ -56,7 +56,7 @@ export default function Header() {
           <nav className="flex items-center gap-1 overflow-x-auto">
             {tab("/", "Questions")}
             {tab("/assignments", "Assignments")}
-            {tab("/packets", "Packets for Hirings")}
+            {tab("/packets", "Prepare for Trending roles")}
             {isAdmin && tab("/admin", "Admin")}
           </nav>
         )}

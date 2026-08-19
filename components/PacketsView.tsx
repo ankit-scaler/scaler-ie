@@ -2,7 +2,7 @@
 import { useMemo, useState } from "react";
 import Link from "next/link";
 
-type Packet = { id: number; role: string; yoe: string; doc_link: string | null; sort_order: number; content_synced_at: string | null };
+type Packet = { id: number; role: string; yoe: string; doc_link: string | null; sort_order: number; content_synced_at: string | null; hasVideoResources: boolean };
 
 export default function PacketsView({ packets }: { packets: Packet[] }) {
   const roles = useMemo(() => ["All", ...Array.from(new Set(packets.map(p => p.role)))], [packets]);
@@ -54,19 +54,34 @@ function PacketCard({ packet }: { packet: Packet }) {
       </div>
       <div className="mb-4 font-display text-lg leading-snug">{packet.role} — {packet.yoe}</div>
 
-      {hasDoc ? (
-        <Link
-          href={`/packets/${packet.id}`}
-          className="inline-flex items-center gap-2 rounded-xl border border-edge bg-panel2 px-3.5 py-2 text-sm text-text transition hover:border-text/40"
-        >
-          {packet.content_synced_at ? "Read packet" : "Open packet"}
-          <svg className="h-3.5 w-3.5" viewBox="0 0 20 20" fill="currentColor"><path d="M7 3h10v10h-2V6.4L4.7 16.7 3.3 15.3 13.6 5H7V3z"/></svg>
-        </Link>
-      ) : (
-        <span className="inline-flex items-center gap-2 rounded-xl border border-edge/60 bg-panel2/50 px-3.5 py-2 text-sm text-mute">
-          Coming soon
-        </span>
-      )}
+      <div className="flex flex-wrap gap-2">
+        {packet.hasVideoResources ? (
+          <Link
+            href={`/packets/${packet.id}/resources`}
+            className="inline-flex items-center gap-2 rounded-xl border border-edge bg-panel2 px-3.5 py-2 text-sm text-text transition hover:border-text/40"
+          >
+            Learning Resources
+          </Link>
+        ) : (
+          <span className="inline-flex items-center gap-2 rounded-xl border border-edge/60 bg-panel2/50 px-3.5 py-2 text-sm text-mute">
+            Resources coming soon
+          </span>
+        )}
+
+        {hasDoc ? (
+          <Link
+            href={`/packets/${packet.id}`}
+            className="inline-flex items-center gap-2 rounded-xl border border-edge bg-panel2 px-3.5 py-2 text-sm text-text transition hover:border-text/40"
+          >
+            {packet.content_synced_at ? "Read Packet" : "Open Packet"}
+            <svg className="h-3.5 w-3.5" viewBox="0 0 20 20" fill="currentColor"><path d="M7 3h10v10h-2V6.4L4.7 16.7 3.3 15.3 13.6 5H7V3z"/></svg>
+          </Link>
+        ) : (
+          <span className="inline-flex items-center gap-2 rounded-xl border border-edge/60 bg-panel2/50 px-3.5 py-2 text-sm text-mute">
+            Packet coming soon
+          </span>
+        )}
+      </div>
     </article>
   );
 }

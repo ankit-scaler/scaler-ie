@@ -5,6 +5,7 @@ import { FlightSpinner } from "./FlightLoader";
 import PacketLinksManager from "./PacketLinksManager";
 import AssignmentsManager from "./AssignmentsManager";
 import LearnerAccessManager from "./LearnerAccessManager";
+import VideoResourcesManager from "./VideoResourcesManager";
 
 type Stats = {
   views: { user_email: string; company: string | null; role: string | null; program: string | null; created_at: string }[];
@@ -12,6 +13,7 @@ type Stats = {
   admins: { email: string; added_at: string; added_by: string | null }[];
   packetViews: { user_email: string; created_at: string; role: string | null; yoe: string | null }[];
   assignmentViews: { user_email: string; created_at: string; program: string | null; company: string | null; role: string | null; round: string | null }[];
+  videoViews: { user_email: string; created_at: string; topic: string | null; role: string | null; yoe: string | null }[];
 };
 
 const RANGES = [
@@ -56,6 +58,7 @@ export default function AdminDashboard({ me }: { me: string }) {
   const [breakdownQuery, setBreakdownQuery] = useState("");
   const [packetQuery, setPacketQuery] = useState("");
   const [assignmentQuery, setAssignmentQuery] = useState("");
+  const [videoQuery, setVideoQuery] = useState("");
 
   const load = async () => {
     setLoading(true);
@@ -224,6 +227,25 @@ export default function AdminDashboard({ me }: { me: string }) {
     return rows.filter(r => r.email.toLowerCase().includes(qL) || r.assignment.toLowerCase().includes(qL));
   }, [data, assignmentQuery]);
 
+  // Same shape again: grain is (email, video) with first/last/count.
+  const videoByEmail = useMemo(() => {
+    if (!data) return [];
+    const m = new Map<string, { email: string; video: string; count: number; first: string; last: string }>();
+    data.videoViews.forEach(v => {
+      const video = `${v.topic || "—"} (${v.role || "—"} · ${v.yoe || "—"})`;
+      const k = `${v.user_email}|${video}`;
+      const e = m.get(k) || { email: v.user_email, video, count: 0, first: v.created_at, last: v.created_at };
+      e.count++;
+      if (v.created_at < e.first) e.first = v.created_at;
+      if (v.created_at > e.last) e.last = v.created_at;
+      m.set(k, e);
+    });
+    const rows = Array.from(m.values()).sort((a, b) => b.last.localeCompare(a.last));
+    const qL = videoQuery.trim().toLowerCase();
+    if (!qL) return rows;
+    return rows.filter(r => r.email.toLowerCase().includes(qL) || r.video.toLowerCase().includes(qL));
+  }, [data, videoQuery]);
+
   const addAdmin = async () => {
     if (!newAdmin.includes("@")) return;
     await fetch("/api/admin/add-admin", { method: "POST", headers: {"content-type":"application/json"}, body: JSON.stringify({ email: newAdmin }) });
@@ -291,6 +313,17 @@ export default function AdminDashboard({ me }: { me: string }) {
     downloadCsv(`admin-assignment-breakdown-${rangeFileTag}.csv`, rows);
   };
 
+  const exportVideoBreakdownCsv = () => {
+    const rows: (string | number)[][] = [
+      ["Video", "Email", "First time date", "Last time date", "Count"],
+      ...videoByEmail.map(r => [
+        r.video, r.email,
+        new Date(r.first).toLocaleString(), new Date(r.last).toLocaleString(), r.count,
+      ]),
+    ];
+    downloadCsv(`admin-video-breakdown-${rangeFileTag}.csv`, rows);
+  };
+
   return (
     <div className="space-y-10">
       <section className="flex flex-wrap items-end justify-between gap-4">
@@ -331,14 +364,16 @@ export default function AdminDashboard({ me }: { me: string }) {
         </div>
       </section>
 
+      <SectionLabel accent="acad">Overview</SectionLabel>
+
       <section className="grid grid-cols-2 gap-3 md:grid-cols-3">
-        <Stat label="Unique users" value={uniqueUsers} />
-        <Stat label="Total views" value={data?.views.length ?? 0} />
-        <Stat label="Admins" value={data?.admins.length ?? 0} />
+        <Stat label="Unique users" value={uniqueUsers} accent="acad" />
+        <Stat label="Total views" value={data?.views.length ?? 0} accent="dsml" />
+        <Stat label="Admins" value={data?.admins.length ?? 0} accent="devops" />
       </section>
 
       <section className="grid grid-cols-1 gap-4 lg:grid-cols-2">
-        <Card title="Daily views & users">
+        <Card title="Daily views & users" accent="acad">
           <ResponsiveContainer width="100%" height={240}>
             <LineChart data={dailyBuckets}>
               <CartesianGrid stroke="rgb(var(--edge))" vertical={false} />
@@ -350,7 +385,7 @@ export default function AdminDashboard({ me }: { me: string }) {
             </LineChart>
           </ResponsiveContainer>
         </Card>
-        <Card title="Packets opened — by unique user (top 20)">
+        <Card title="Packets opened — by unique user (top 20)" accent="aiml">
           <ResponsiveContainer width="100%" height={240}>
             <BarChart data={packetsByUserChart}>
               <CartesianGrid stroke="rgb(var(--edge))" vertical={false} />
@@ -366,7 +401,9 @@ export default function AdminDashboard({ me }: { me: string }) {
         </Card>
       </section>
 
-      <Card title={`Company & role breakdown (${companyRoleBreakdown.length})`}>
+      <SectionLabel accent="acad">Learner activity</SectionLabel>
+
+      <Card title={`Company & role breakdown (${companyRoleBreakdown.length})`} accent="acad">
         <div className="mb-4 flex flex-wrap items-center gap-2">
           <input
             value={breakdownQuery}
@@ -412,7 +449,7 @@ export default function AdminDashboard({ me }: { me: string }) {
         </div>
       </Card>
 
-      <Card title={`Users (${perUser.length})`}>
+      <Card title={`Users (${perUser.length})`} accent="dsml">
         <div className="overflow-x-auto">
           <table className="w-full text-sm">
             <thead className="text-left font-mono text-[11px] uppercase tracking-widest text-mute">
@@ -432,7 +469,7 @@ export default function AdminDashboard({ me }: { me: string }) {
         </div>
       </Card>
 
-      <Card title={`Packet reads — by learner (${packetByEmail.length})`}>
+      <Card title={`Packet reads — by learner (${packetByEmail.length})`} accent="aiml">
         <div className="mb-4 flex flex-wrap items-center gap-2">
           <input
             value={packetQuery}
@@ -474,7 +511,7 @@ export default function AdminDashboard({ me }: { me: string }) {
         </div>
       </Card>
 
-      <Card title={`Assignment opens — by learner (${assignmentByEmail.length})`}>
+      <Card title={`Assignment opens — by learner (${assignmentByEmail.length})`} accent="dsml">
         <div className="mb-4 flex flex-wrap items-center gap-2">
           <input
             value={assignmentQuery}
@@ -516,13 +553,61 @@ export default function AdminDashboard({ me }: { me: string }) {
         </div>
       </Card>
 
+      <Card title={`Videos watched — by learner (${videoByEmail.length})`} accent="devops">
+        <div className="mb-4 flex flex-wrap items-center gap-2">
+          <input
+            value={videoQuery}
+            onChange={e => setVideoQuery(e.target.value)}
+            placeholder="filter by email or topic..."
+            className="min-w-[220px] flex-1 rounded-xl border border-edge bg-panel2 px-3 py-2 text-sm text-text placeholder:text-mute/60 focus:border-acad focus:outline-none"
+          />
+          <button
+            onClick={exportVideoBreakdownCsv}
+            className="rounded-xl border border-edge px-3 py-2 text-sm text-mute hover:text-text"
+          >Export CSV</button>
+        </div>
+        <div className="max-h-[420px] overflow-y-auto">
+          <table className="w-full text-sm">
+            <thead className="sticky top-0 bg-panel text-left font-mono text-[11px] uppercase tracking-widest text-mute">
+              <tr>
+                <th className="py-2">Email</th>
+                <th className="py-2">Video</th>
+                <th className="py-2">First watched</th>
+                <th className="py-2">Last watched</th>
+                <th className="py-2 text-right">Count</th>
+              </tr>
+            </thead>
+            <tbody className="divide-y divide-edge/60">
+              {videoByEmail.length === 0 && (
+                <tr><td colSpan={5} className="py-4 text-mute">No video opens yet in this window.</td></tr>
+              )}
+              {videoByEmail.map(r => (
+                <tr key={`${r.email}|${r.video}`}>
+                  <td className="py-2">{r.email}</td>
+                  <td className="py-2 text-mute">{r.video}</td>
+                  <td className="py-2 font-mono text-xs text-mute">{new Date(r.first).toLocaleString()}</td>
+                  <td className="py-2 font-mono text-xs text-mute">{new Date(r.last).toLocaleString()}</td>
+                  <td className="py-2 text-right font-mono text-xs">{r.count}</td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        </div>
+      </Card>
+
+      <SectionLabel accent="aiml">Content management</SectionLabel>
+
       <PacketLinksManager />
+
+      <VideoResourcesManager />
 
       <AssignmentsManager />
 
+      <SectionLabel accent="devops">Access & admins</SectionLabel>
+
       <LearnerAccessManager />
 
-      <Card title="Admins">
+      <Card title="Admins" accent="devops">
         <div className="mb-4 flex flex-wrap gap-2">
           <input
             value={newAdmin}
@@ -557,18 +642,40 @@ export default function AdminDashboard({ me }: { me: string }) {
   );
 }
 
-function Stat({ label, value }: { label: string; value: number | string }) {
+const ACCENTS = {
+  acad:   { bar: "bg-acad",   text: "text-acad" },
+  dsml:   { bar: "bg-dsml",   text: "text-dsml" },
+  aiml:   { bar: "bg-aiml",   text: "text-aiml" },
+  devops: { bar: "bg-devops", text: "text-devops" },
+} as const;
+type Accent = keyof typeof ACCENTS;
+
+function SectionLabel({ children, accent = "acad" }: { children: React.ReactNode; accent?: Accent }) {
+  const a = ACCENTS[accent];
   return (
-    <div className="rounded-2xl border border-edge bg-panel p-5 shadow-card">
-      <div className="font-mono text-[11px] uppercase tracking-widest text-mute">{label}</div>
+    <div className="flex items-center gap-2.5 pt-2">
+      <span className={`h-4 w-1.5 rounded-full ${a.bar}`} />
+      <h2 className="font-display text-2xl font-bold leading-none">{children}</h2>
+    </div>
+  );
+}
+
+function Stat({ label, value, accent = "acad" }: { label: string; value: number | string; accent?: Accent }) {
+  const a = ACCENTS[accent];
+  return (
+    <div className="relative overflow-hidden rounded-2xl border border-edge bg-panel p-5 shadow-card">
+      <div className={`absolute inset-x-0 top-0 h-[3px] ${a.bar}`} />
+      <div className={`font-mono text-[11px] font-bold uppercase tracking-widest ${a.text}`}>{label}</div>
       <div className="mt-1 font-display text-4xl">{typeof value === "number" ? value.toLocaleString() : value}</div>
     </div>
   );
 }
-function Card({ title, children }: { title: string; children: React.ReactNode }) {
+function Card({ title, children, accent = "acad" }: { title: string; children: React.ReactNode; accent?: Accent }) {
+  const a = ACCENTS[accent];
   return (
-    <div className="rounded-2xl border border-edge bg-panel p-5 shadow-card">
-      <div className="mb-4 font-mono text-[11px] uppercase tracking-widest text-mute">{title}</div>
+    <div className="relative overflow-hidden rounded-2xl border border-edge bg-panel p-5 shadow-card">
+      <div className={`absolute inset-x-0 top-0 h-[3px] ${a.bar}`} />
+      <div className={`mb-4 font-mono text-xs font-bold uppercase tracking-widest ${a.text}`}>{title}</div>
       {children}
     </div>
   );

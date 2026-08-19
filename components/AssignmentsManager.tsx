@@ -83,8 +83,9 @@ export default function AssignmentsManager() {
   if (!loaded) return null;
 
   return (
-    <div className="rounded-2xl border border-edge bg-panel p-5 shadow-card">
-      <div className="mb-1 font-mono text-[11px] uppercase tracking-widest text-mute">Manage assignments</div>
+    <div className="relative overflow-hidden rounded-2xl border border-edge bg-panel p-5 shadow-card">
+      <div className="absolute inset-x-0 top-0 h-[3px] bg-dsml" />
+      <div className="mb-1 font-mono text-xs font-bold uppercase tracking-widest text-dsml">Manage assignments</div>
       <p className="mb-4 text-sm text-mute">Add or edit assignments manually — these appear on the Assignments page immediately.</p>
 
       {error && (

@@ -85,8 +85,9 @@ export default function PacketLinksManager() {
   if (!loaded) return null;
 
   return (
-    <div className="rounded-2xl border border-edge bg-panel p-5 shadow-card">
-      <div className="mb-1 font-mono text-[11px] uppercase tracking-widest text-mute">Manage packet links</div>
+    <div className="relative overflow-hidden rounded-2xl border border-edge bg-panel p-5 shadow-card">
+      <div className="absolute inset-x-0 top-0 h-[3px] bg-aiml" />
+      <div className="mb-1 font-mono text-xs font-bold uppercase tracking-widest text-aiml">Manage packet links</div>
       <p className="mb-4 text-sm text-mute">
         Paste the real doc URL for each row below. Content is pulled in from the doc and rendered on the Packets
         page itself — use Refresh after editing the source doc to pick up changes.
