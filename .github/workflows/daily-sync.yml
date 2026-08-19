@@ -15,6 +15,7 @@ jobs:
       - run: python sync/sync_sheet.py
         env:
           SHEET_ID:             ${{ secrets.SHEET_ID }}
+          LEARNERS_SHEET_ID:    ${{ secrets.LEARNERS_SHEET_ID }}
           SUPABASE_URL:         ${{ secrets.SUPABASE_URL }}
           SUPABASE_SERVICE_KEY: ${{ secrets.SUPABASE_SERVICE_KEY }}
           GOOGLE_CREDS_JSON:    ${{ secrets.GOOGLE_CREDS_JSON }}

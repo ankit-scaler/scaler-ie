@@ -1,13 +1,20 @@
 "use client";
+import { useSearchParams } from "next/navigation";
 import { supabaseBrowser } from "@/lib/supabase-browser";
 import ScalerLogo from "@/components/ScalerLogo";
 
 export default function LoginPage() {
+  const params = useSearchParams();
+  const next = params.get("next");
+  const notAllowed = params.get("error") === "not_allowed";
+
   const signIn = async () => {
     const sb = supabaseBrowser();
+    const callback = new URL("/auth/callback", location.origin);
+    if (next) callback.searchParams.set("next", next);
     await sb.auth.signInWithOAuth({
       provider: "google",
-      options: { redirectTo: `${location.origin}/auth/callback` },
+      options: { redirectTo: callback.toString() },
     });
   };
   return (
@@ -17,6 +24,12 @@ export default function LoginPage() {
         Real questions.<br />From real Scaler learners.
       </h1>
       <p className="mb-8 text-mute">Sign in with Google to browse the vault.</p>
+      {notAllowed && (
+        <div className="mb-6 max-w-sm rounded-xl border border-devops/40 bg-devops/10 px-4 py-3 text-sm text-devops">
+          This Google account isn&apos;t on the Scaler learner list, so it can&apos;t sign in here.
+          If this looks wrong, reach out to <span className="font-medium">ankit.mishra@scaler.com</span>.
+        </div>
+      )}
       <button
         onClick={signIn}
         className="inline-flex items-center gap-3 rounded-xl bg-text px-5 py-3 text-sm font-medium text-ink shadow-card transition hover:shadow-cardH"

@@ -93,6 +93,29 @@ create index if not exists idx_pkv_email   on packet_views (user_email);
 create index if not exists idx_pkv_packet  on packet_views (packet_id);
 create index if not exists idx_pkv_created on packet_views (created_at desc);
 
+-- ============ ASSIGNMENT ANALYTICS ============
+create table if not exists assignment_views (
+  id            bigserial primary key,
+  user_email    text not null,
+  assignment_id bigint not null references assignments(id) on delete cascade,
+  created_at    timestamptz default now()
+);
+create index if not exists idx_av_email   on assignment_views (user_email);
+create index if not exists idx_av_assignment on assignment_views (assignment_id);
+create index if not exists idx_av_created on assignment_views (created_at desc);
+
+-- ============ ACCESS CONTROL ============
+-- Only these emails (synced nightly from the learner-tracking sheet, or
+-- granted manually via Admin) plus anyone in `admins` may sign in — enforced
+-- in app/auth/callback/route.ts.
+create table if not exists allowed_learners (
+  email      text primary key,
+  synced_at  timestamptz default now(),
+  -- null = managed by the sheet sync; an admin's email = granted manually via
+  -- Admin, which the sync must never delete even if the sheet doesn't list it.
+  added_by   text
+);
+
 -- ============ RLS ============
 alter table questions   enable row level security;
 alter table assignments enable row level security;
@@ -101,6 +124,8 @@ alter table page_views  enable row level security;
 alter table sessions    enable row level security;
 alter table packets              enable row level security;
 alter table packet_views         enable row level security;
+alter table assignment_views     enable row level security;
+alter table allowed_learners     enable row level security;
 
 -- Policies aren't CREATE-IF-NOT-EXISTS-able in Postgres, and the Supabase SQL editor
 -- runs a pasted script as one transaction — one "already exists" error rolls back
@@ -108,6 +133,7 @@ alter table packet_views         enable row level security;
 -- safe to paste and re-run any number of times.
 drop policy if exists "read packets"         on packets;
 drop policy if exists "insert own packet view"   on packet_views;
+drop policy if exists "insert own assignment view" on assignment_views;
 drop policy if exists "read questions"   on questions;
 drop policy if exists "read assignments" on assignments;
 drop policy if exists "insert own view" on page_views;
@@ -116,6 +142,10 @@ drop policy if exists "admins read self" on admins;
 
 create policy "read packets" on packets for select using (auth.role() = 'authenticated');
 create policy "insert own packet view" on packet_views for insert with check (auth.jwt() ->> 'email' = user_email);
+create policy "insert own assignment view" on assignment_views for insert with check (auth.jwt() ->> 'email' = user_email);
+-- allowed_learners has no policies: only the service-role client (auth
+-- callback, sync job) ever touches it, so RLS with zero policies is exactly
+-- "deny all to anon/authenticated" — the intended behavior.
 
 -- Anyone signed-in can read content
 create policy "read questions"   on questions   for select using (auth.role() = 'authenticated');

@@ -12,6 +12,10 @@ SHEET_ID = os.environ["SHEET_ID"]
 SUPA_URL = os.environ["SUPABASE_URL"]
 SUPA_KEY = os.environ["SUPABASE_SERVICE_KEY"]
 CREDS    = json.loads(os.environ["GOOGLE_CREDS_JSON"])
+# Separate spreadsheet that gates who can sign in at all (app/auth/callback
+# checks this table). Optional so this script keeps working if it's unset —
+# just skips that part of the sync rather than erroring the whole job out.
+LEARNERS_SHEET_ID = os.environ.get("LEARNERS_SHEET_ID")
 
 QUESTION_TABS = {
     "Questions | Academy": {"round_col": "Round"},
@@ -20,6 +24,8 @@ QUESTION_TABS = {
     "Questions | DSML":    {"round_col": "# Round - Name"},
 }
 ASSIGNMENT_TAB = "Assignments"
+LEARNERS_TAB = "Main"
+LEARNERS_EMAIL_COL = 4  # Column D, 1-indexed
 
 def norm(s):
     if s is None: return ""
@@ -95,6 +101,44 @@ def fetch_column_hyperlinks(sh, tab_name, col_idx1, n_rows):
     out += [None] * (n_rows - len(out))
     return out
 
+def sync_allowed_learners(gc, supa):
+    """Full replace of the sheet-managed rows in allowed_learners (Main tab,
+    column D). Rows an admin granted manually via the website (added_by set)
+    are never touched here — only the delete step is scoped to added_by is
+    null, so a manual grant survives even if the sheet doesn't list that
+    email. Refuses to touch the table at all if the sheet read fails or
+    produces zero emails — a bad read should never lock every learner out."""
+    if not LEARNERS_SHEET_ID:
+        print("LEARNERS_SHEET_ID not set, skipping learner allow-list sync", file=sys.stderr)
+        return
+    try:
+        ws = gc.open_by_key(LEARNERS_SHEET_ID).worksheet(LEARNERS_TAB)
+        all_vals = ws.get_all_values()
+    except Exception as e:
+        print(f"learner allow-list: failed to read sheet, skipping: {e}", file=sys.stderr)
+        return
+
+    emails = set()
+    for raw in all_vals[1:]:
+        if len(raw) < LEARNERS_EMAIL_COL:
+            continue
+        e = norm(raw[LEARNERS_EMAIL_COL - 1]).lower()
+        if "@" in e:
+            emails.add(e)
+
+    if not emails:
+        print("learner allow-list: sheet produced 0 emails, refusing to sync (would lock everyone out)", file=sys.stderr)
+        return
+
+    now = datetime.utcnow().isoformat()
+    # added_by explicitly null: if a manually-granted email later shows up in
+    # the sheet too, it becomes sheet-managed from here on — expected.
+    rows = [{"email": e, "synced_at": now, "added_by": None} for e in emails]
+    for i in range(0, len(rows), 500):
+        supa.table("allowed_learners").upsert(rows[i:i+500], on_conflict="email").execute()
+    supa.table("allowed_learners").delete().is_("added_by", "null").not_.in_("email", list(emails)).execute()
+    print(f"learner allow-list: synced {len(emails)} emails")
+
 def main():
     creds = Credentials.from_service_account_info(
         CREDS, scopes=["https://www.googleapis.com/auth/spreadsheets.readonly"]
@@ -102,6 +146,9 @@ def main():
     gc = gspread.authorize(creds)
     sh = gc.open_by_key(SHEET_ID)
     supa = create_client(SUPA_URL, SUPA_KEY)
+
+    # --- Allowed learners (access gate) ---
+    sync_allowed_learners(gc, supa)
 
     # --- Questions ---
     q_rows = []

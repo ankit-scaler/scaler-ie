@@ -4,12 +4,14 @@ import { BarChart, Bar, XAxis, YAxis, Tooltip, ResponsiveContainer, LineChart, L
 import { FlightSpinner } from "./FlightLoader";
 import PacketLinksManager from "./PacketLinksManager";
 import AssignmentsManager from "./AssignmentsManager";
+import LearnerAccessManager from "./LearnerAccessManager";
 
 type Stats = {
   views: { user_email: string; company: string | null; role: string | null; program: string | null; created_at: string }[];
   sessions: { user_email: string; duration_sec: number; started_at: string }[];
   admins: { email: string; added_at: string; added_by: string | null }[];
   packetViews: { user_email: string; created_at: string; role: string | null; yoe: string | null }[];
+  assignmentViews: { user_email: string; created_at: string; program: string | null; company: string | null; role: string | null; round: string | null }[];
 };
 
 const RANGES = [
@@ -53,6 +55,7 @@ export default function AdminDashboard({ me }: { me: string }) {
   const [loading, setLoading]   = useState(false);
   const [breakdownQuery, setBreakdownQuery] = useState("");
   const [packetQuery, setPacketQuery] = useState("");
+  const [assignmentQuery, setAssignmentQuery] = useState("");
 
   const load = async () => {
     setLoading(true);
@@ -201,6 +204,26 @@ export default function AdminDashboard({ me }: { me: string }) {
     return rows.filter(r => r.email.toLowerCase().includes(qL) || r.packet.toLowerCase().includes(qL));
   }, [data, packetQuery]);
 
+  // Same tracking shape as packets: grain is (email, assignment) with
+  // first/last/count, so you can see *who* opened *which* assignment link.
+  const assignmentByEmail = useMemo(() => {
+    if (!data) return [];
+    const m = new Map<string, { email: string; assignment: string; count: number; first: string; last: string }>();
+    data.assignmentViews.forEach(v => {
+      const assignment = `${v.company || "—"} — ${v.role || "—"}${v.round ? ` · ${v.round}` : ""}`;
+      const k = `${v.user_email}|${assignment}`;
+      const e = m.get(k) || { email: v.user_email, assignment, count: 0, first: v.created_at, last: v.created_at };
+      e.count++;
+      if (v.created_at < e.first) e.first = v.created_at;
+      if (v.created_at > e.last) e.last = v.created_at;
+      m.set(k, e);
+    });
+    const rows = Array.from(m.values()).sort((a, b) => b.last.localeCompare(a.last));
+    const qL = assignmentQuery.trim().toLowerCase();
+    if (!qL) return rows;
+    return rows.filter(r => r.email.toLowerCase().includes(qL) || r.assignment.toLowerCase().includes(qL));
+  }, [data, assignmentQuery]);
+
   const addAdmin = async () => {
     if (!newAdmin.includes("@")) return;
     await fetch("/api/admin/add-admin", { method: "POST", headers: {"content-type":"application/json"}, body: JSON.stringify({ email: newAdmin }) });
@@ -255,6 +278,17 @@ export default function AdminDashboard({ me }: { me: string }) {
       ]),
     ];
     downloadCsv(`admin-packet-breakdown-${rangeFileTag}.csv`, rows);
+  };
+
+  const exportAssignmentBreakdownCsv = () => {
+    const rows: (string | number)[][] = [
+      ["Assignment", "Email", "First time date", "Last time date", "Count"],
+      ...assignmentByEmail.map(r => [
+        r.assignment, r.email,
+        new Date(r.first).toLocaleString(), new Date(r.last).toLocaleString(), r.count,
+      ]),
+    ];
+    downloadCsv(`admin-assignment-breakdown-${rangeFileTag}.csv`, rows);
   };
 
   return (
@@ -440,9 +474,53 @@ export default function AdminDashboard({ me }: { me: string }) {
         </div>
       </Card>
 
+      <Card title={`Assignment opens — by learner (${assignmentByEmail.length})`}>
+        <div className="mb-4 flex flex-wrap items-center gap-2">
+          <input
+            value={assignmentQuery}
+            onChange={e => setAssignmentQuery(e.target.value)}
+            placeholder="filter by email, company, or role..."
+            className="min-w-[220px] flex-1 rounded-xl border border-edge bg-panel2 px-3 py-2 text-sm text-text placeholder:text-mute/60 focus:border-acad focus:outline-none"
+          />
+          <button
+            onClick={exportAssignmentBreakdownCsv}
+            className="rounded-xl border border-edge px-3 py-2 text-sm text-mute hover:text-text"
+          >Export CSV</button>
+        </div>
+        <div className="max-h-[420px] overflow-y-auto">
+          <table className="w-full text-sm">
+            <thead className="sticky top-0 bg-panel text-left font-mono text-[11px] uppercase tracking-widest text-mute">
+              <tr>
+                <th className="py-2">Email</th>
+                <th className="py-2">Assignment</th>
+                <th className="py-2">First opened</th>
+                <th className="py-2">Last opened</th>
+                <th className="py-2 text-right">Count</th>
+              </tr>
+            </thead>
+            <tbody className="divide-y divide-edge/60">
+              {assignmentByEmail.length === 0 && (
+                <tr><td colSpan={5} className="py-4 text-mute">No assignment opens yet in this window.</td></tr>
+              )}
+              {assignmentByEmail.map(r => (
+                <tr key={`${r.email}|${r.assignment}`}>
+                  <td className="py-2">{r.email}</td>
+                  <td className="py-2 text-mute">{r.assignment}</td>
+                  <td className="py-2 font-mono text-xs text-mute">{new Date(r.first).toLocaleString()}</td>
+                  <td className="py-2 font-mono text-xs text-mute">{new Date(r.last).toLocaleString()}</td>
+                  <td className="py-2 text-right font-mono text-xs">{r.count}</td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        </div>
+      </Card>
+
       <PacketLinksManager />
 
       <AssignmentsManager />
+
+      <LearnerAccessManager />
 
       <Card title="Admins">
         <div className="mb-4 flex flex-wrap gap-2">

@@ -14,7 +14,23 @@ export async function middleware(req: NextRequest) {
       },
     }
   );
-  await supabase.auth.getUser();
+  const { data: { user } } = await supabase.auth.getUser();
+
+  const { pathname, search } = req.nextUrl;
+  const isApi = pathname.startsWith("/api/");
+  const isAuthRoute = pathname.startsWith("/auth/");
+  const isLogin = pathname === "/login";
+
+  // Deep-linking: an unauthenticated request for any page (not API/auth/login
+  // routes, which handle their own access checks) bounces to /login carrying
+  // where it was headed, so app/login and app/auth/callback can send the user
+  // back there once signed in instead of always landing on the homepage.
+  if (!user && !isApi && !isAuthRoute && !isLogin) {
+    const loginUrl = new URL("/login", req.url);
+    loginUrl.searchParams.set("next", pathname + search);
+    return NextResponse.redirect(loginUrl);
+  }
+
   return res;
 }
 

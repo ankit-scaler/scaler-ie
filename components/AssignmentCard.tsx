@@ -8,6 +8,8 @@ export default function AssignmentCard({
   index: number;
 }) {
   const hasLink = a.link && /^https?:\/\//i.test(a.link);
+  const trackOpen = () =>
+    fetch("/api/track-assignment", { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify({ assignment_id: a.id }) }).catch(() => {});
   return (
     <motion.article
       initial={{ opacity: 0, y: 14 }}
@@ -28,6 +30,7 @@ export default function AssignmentCard({
         <a
           href={a.link!}
           target="_blank" rel="noreferrer"
+          onClick={trackOpen}
           className="inline-flex items-center gap-2 rounded-xl border border-edge bg-panel2 px-3.5 py-2 text-sm text-text transition hover:border-text/40"
         >
           Open assignment

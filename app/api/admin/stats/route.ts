@@ -30,20 +30,23 @@ export async function GET(req: Request) {
   }
 
   const admin = supabaseAdmin();
-  let viewsQ       = admin.from("page_views").select("user_email,company,role,program,created_at").gte("created_at", since);
-  let sessionsQ    = admin.from("sessions").select("user_email,duration_sec,started_at").gte("started_at", since);
-  let packetViewsQ = admin.from("packet_views").select("user_email,created_at,packets(role,yoe)").gte("created_at", since);
+  let viewsQ           = admin.from("page_views").select("user_email,company,role,program,created_at").gte("created_at", since);
+  let sessionsQ        = admin.from("sessions").select("user_email,duration_sec,started_at").gte("started_at", since);
+  let packetViewsQ     = admin.from("packet_views").select("user_email,created_at,packets(role,yoe)").gte("created_at", since);
+  let assignmentViewsQ = admin.from("assignment_views").select("user_email,created_at,assignments(program,company,role,round)").gte("created_at", since);
   if (until) {
-    viewsQ       = viewsQ.lte("created_at", until);
-    sessionsQ    = sessionsQ.lte("started_at", until);
-    packetViewsQ = packetViewsQ.lte("created_at", until);
+    viewsQ           = viewsQ.lte("created_at", until);
+    sessionsQ        = sessionsQ.lte("started_at", until);
+    packetViewsQ     = packetViewsQ.lte("created_at", until);
+    assignmentViewsQ = assignmentViewsQ.lte("created_at", until);
   }
 
-  const [views, sessions, admins, packetViews] = await Promise.all([
+  const [views, sessions, admins, packetViews, assignmentViews] = await Promise.all([
     viewsQ,
     sessionsQ,
     admin.from("admins").select("email,added_at,added_by").order("added_at", { ascending: true }),
     packetViewsQ,
+    assignmentViewsQ,
   ]);
 
   return NextResponse.json({
@@ -55,6 +58,13 @@ export async function GET(req: Request) {
     packetViews: (packetViews.data || []).map((r: any) => ({
       user_email: r.user_email, created_at: r.created_at,
       role: r.packets?.role ?? null, yoe: r.packets?.yoe ?? null,
+    })),
+    assignmentViews: (assignmentViews.data || []).map((r: any) => ({
+      user_email: r.user_email, created_at: r.created_at,
+      program: r.assignments?.program ?? null,
+      company: r.assignments?.company ?? null,
+      role: r.assignments?.role ?? null,
+      round: r.assignments?.round ?? null,
     })),
   });
 }
