@@ -70,14 +70,18 @@ export default function AdminDashboard({ me }: { me: string }) {
     else setRange("custom");
   };
 
+  // The exact date window each CSV export actually covers — mirrors the
+  // since/until resolution in /api/admin/stats so the filename is a truthful
+  // record of what's inside, not just the vague "week"/"month" label.
+  const rangeFileTag = useMemo(() => {
+    const to = range === "custom" ? customTo : todayStr();
+    const from = range === "custom" ? customFrom : daysAgoStr(range === "day" ? 1 : range === "month" ? 30 : 7);
+    return `${from}_to_${to}`;
+  }, [range, customFrom, customTo]);
+
   const uniqueUsers = useMemo(() => {
     if (!data) return 0;
     return new Set(data.sessions.map(s => s.user_email).concat(data.views.map(v => v.user_email))).size;
-  }, [data]);
-
-  const totalMinutes = useMemo(() => {
-    if (!data) return 0;
-    return Math.round(data.sessions.reduce((s, x) => s + (x.duration_sec || 0), 0) / 60);
   }, [data]);
 
   const bucketDays = useMemo(() => {
@@ -171,6 +175,12 @@ export default function AdminDashboard({ me }: { me: string }) {
       .sort((a, b) => b.packetsRead - a.packetsRead);
   }, [data]);
 
+  // Top 20 for the chart — a bar per unique user gets unreadable past that.
+  const packetsByUserChart = useMemo(
+    () => packetPerUser.slice(0, 20).map(u => ({ email: u.email.split("@")[0], packetsRead: u.packetsRead })),
+    [packetPerUser]
+  );
+
   // Grain is (email, packet) so it's clear *who* read *which* packet, how many times,
   // and the oldest/most recent read — same shape as the company/role breakdown above.
   const packetByEmail = useMemo(() => {
@@ -222,7 +232,7 @@ export default function AdminDashboard({ me }: { me: string }) {
       ["Email", "Views", "Minutes", "Packets Read", "Last Activity"],
       ...byEmail.map(u => [u.email, u.views, u.minutes, u.packetsRead, u.last]),
     ];
-    downloadCsv(`admin-usage-${range}-${todayStr()}.csv`, rows);
+    downloadCsv(`admin-usage-${rangeFileTag}.csv`, rows);
   };
 
   const exportCompanyBreakdownCsv = () => {
@@ -233,7 +243,7 @@ export default function AdminDashboard({ me }: { me: string }) {
         new Date(r.first).toLocaleString(), new Date(r.last).toLocaleString(), r.views,
       ]),
     ];
-    downloadCsv(`admin-company-role-breakdown-${range}-${todayStr()}.csv`, rows);
+    downloadCsv(`admin-company-role-breakdown-${rangeFileTag}.csv`, rows);
   };
 
   const exportPacketBreakdownCsv = () => {
@@ -244,7 +254,7 @@ export default function AdminDashboard({ me }: { me: string }) {
         new Date(r.first).toLocaleString(), new Date(r.last).toLocaleString(), r.count,
       ]),
     ];
-    downloadCsv(`admin-packet-breakdown-${range}-${todayStr()}.csv`, rows);
+    downloadCsv(`admin-packet-breakdown-${rangeFileTag}.csv`, rows);
   };
 
   return (
@@ -287,10 +297,9 @@ export default function AdminDashboard({ me }: { me: string }) {
         </div>
       </section>
 
-      <section className="grid grid-cols-2 gap-3 md:grid-cols-4">
+      <section className="grid grid-cols-2 gap-3 md:grid-cols-3">
         <Stat label="Unique users" value={uniqueUsers} />
         <Stat label="Total views" value={data?.views.length ?? 0} />
-        <Stat label="Time on site" value={formatDuration(totalMinutes)} />
         <Stat label="Admins" value={data?.admins.length ?? 0} />
       </section>
 
@@ -307,16 +316,19 @@ export default function AdminDashboard({ me }: { me: string }) {
             </LineChart>
           </ResponsiveContainer>
         </Card>
-        <Card title="Daily minutes on site">
+        <Card title="Packets opened — by unique user (top 20)">
           <ResponsiveContainer width="100%" height={240}>
-            <BarChart data={dailyBuckets}>
+            <BarChart data={packetsByUserChart}>
               <CartesianGrid stroke="rgb(var(--edge))" vertical={false} />
-              <XAxis dataKey="day" stroke="rgb(var(--mute))" fontSize={11} />
-              <YAxis stroke="rgb(var(--mute))" fontSize={11} />
+              <XAxis dataKey="email" stroke="rgb(var(--mute))" fontSize={10} angle={-35} textAnchor="end" interval={0} height={60} />
+              <YAxis stroke="rgb(var(--mute))" fontSize={11} allowDecimals={false} />
               <Tooltip contentStyle={{ background: "rgb(var(--panel))", border: "1px solid rgb(var(--edge))", borderRadius: 8, color: "rgb(var(--text))" }} />
-              <Bar dataKey="minutes" fill="rgb(var(--aiml))" radius={[6,6,0,0]} />
+              <Bar dataKey="packetsRead" fill="rgb(var(--aiml))" radius={[6,6,0,0]} />
             </BarChart>
           </ResponsiveContainer>
+          {packetsByUserChart.length === 0 && (
+            <div className="py-4 text-center text-sm text-mute">No packet activity yet in this window.</div>
+          )}
         </Card>
       </section>
 
