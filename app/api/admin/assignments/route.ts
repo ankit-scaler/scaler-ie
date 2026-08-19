@@ -33,7 +33,11 @@ export async function POST(req: Request) {
     const link    = typeof body.link === "string" ? body.link.trim() || null : null;
     if (!company || !role) return NextResponse.json({ ok: false, error: "Company and Role are required." }, { status: 400 });
 
-    const fingerprint = fp(program, company, role, round, link);
+    // link is deliberately excluded from the fingerprint: it's a mutable field
+    // on an otherwise-stable (program, company, role, round) identity, and the
+    // nightly sheet sync uses the same identity so it updates this same row
+    // in place rather than creating a duplicate when link-extraction improves.
+    const fingerprint = fp(program, company, role, round);
 
     if (body.action === "create") {
       const { error } = await admin.from("assignments").insert({ program, company, role, round, link, fingerprint });

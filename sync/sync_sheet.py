@@ -194,7 +194,12 @@ def main():
                     "role": role,
                     "round": rnd,
                     "link": link,
-                    "fingerprint": fp(program, company, role, rnd, link),
+                    # link is deliberately excluded: it's a mutable field on an
+                    # otherwise-stable (program, company, role, round) identity.
+                    # Including it here means every time link-extraction improves,
+                    # the fingerprint changes and upsert creates a duplicate row
+                    # instead of updating the existing one in place.
+                    "fingerprint": fp(program, company, role, rnd),
                 })
             a_rows = dedupe_by_fp(a_rows)
             n_with_link = sum(1 for r in a_rows if r["link"])
