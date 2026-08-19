@@ -12,7 +12,7 @@ export default async function PacketsPage() {
 
   const { data: packets } = await sb
     .from("packets")
-    .select("id,role,yoe,doc_link,sort_order")
+    .select("id,role,yoe,doc_link,sort_order,content_synced_at")
     .order("sort_order");
 
   return <PacketsView packets={packets || []} />;

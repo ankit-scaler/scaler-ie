@@ -85,3 +85,30 @@ body::before {
 @media (prefers-reduced-motion: reduce) {
   * { animation: none !important; transition: none !important; }
 }
+
+/* Rendered, sanitized Google Doc content on the packet reader page */
+.doc-content { color: rgb(var(--text)); line-height: 1.7; }
+.doc-content h1, .doc-content h2, .doc-content h3, .doc-content h4 {
+  font-family: '"Instrument Serif"', serif;
+  line-height: 1.25;
+  margin: 1.4em 0 0.5em;
+}
+.doc-content h1 { font-size: 1.75rem; }
+.doc-content h2 { font-size: 1.5rem; }
+.doc-content h3 { font-size: 1.25rem; }
+.doc-content h4 { font-size: 1.1rem; }
+.doc-content p { margin: 0.9em 0; }
+.doc-content ul, .doc-content ol { margin: 0.9em 0; padding-left: 1.4em; }
+.doc-content li { margin: 0.35em 0; }
+.doc-content a { color: rgb(var(--acad)); text-decoration: underline; text-underline-offset: 2px; }
+.doc-content blockquote {
+  margin: 1em 0; padding: 0.25em 1em;
+  border-left: 3px solid rgb(var(--edge));
+  color: rgb(var(--mute));
+}
+.doc-content table { width: 100%; border-collapse: collapse; margin: 1em 0; font-size: 0.9em; }
+.doc-content th, .doc-content td { border: 1px solid rgb(var(--edge)); padding: 0.5em 0.75em; text-align: left; }
+.doc-content th { background: rgb(var(--panel2)); }
+.doc-content hr { border: none; border-top: 1px solid rgb(var(--edge)); margin: 1.5em 0; }
+.doc-content strong, .doc-content b { font-weight: 600; }
+.doc-content > *:first-child { margin-top: 0; }

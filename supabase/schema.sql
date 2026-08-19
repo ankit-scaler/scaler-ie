@@ -75,6 +75,8 @@ create table if not exists packets (
   yoe        text not null,
   doc_title  text,              -- display name of the source doc (reference for admins)
   doc_link   text,               -- actual URL, filled in via Admin > Manage packet links
+  content_html       text,        -- cached, sanitized doc content rendered on-site
+  content_synced_at  timestamptz, -- when content_html was last refreshed from doc_link
   sort_order int not null default 0,
   created_at timestamptz default now(),
   unique (role, yoe)

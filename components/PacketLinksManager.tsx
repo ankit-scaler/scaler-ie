@@ -1,7 +1,10 @@
 "use client";
 import { useEffect, useState } from "react";
 
-type Packet = { id: number; role: string; yoe: string; doc_title: string | null; doc_link: string | null; sort_order: number };
+type Packet = {
+  id: number; role: string; yoe: string; doc_title: string | null; doc_link: string | null;
+  sort_order: number; content_synced_at: string | null;
+};
 
 const emptyDraft = { role: "", yoe: "", doc_title: "", doc_link: "" };
 
@@ -9,8 +12,10 @@ export default function PacketLinksManager() {
   const [packets, setPackets] = useState<Packet[]>([]);
   const [draft, setDraft] = useState<Record<string, string>>({});
   const [savingKey, setSavingKey] = useState<string | null>(null);
+  const [refreshingId, setRefreshingId] = useState<number | null>(null);
   const [loaded, setLoaded] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [rowNotice, setRowNotice] = useState<Record<number, string>>({});
   const [newPacket, setNewPacket] = useState(emptyDraft);
   const [adding, setAdding] = useState(false);
   const [addError, setAddError] = useState<string | null>(null);
@@ -27,12 +32,28 @@ export default function PacketLinksManager() {
   const save = async (id: number, key: string) => {
     const value = draft[key] ?? "";
     setSavingKey(key);
-    await fetch("/api/admin/packets", {
+    setRowNotice(n => ({ ...n, [id]: "" }));
+    const res = await fetch("/api/admin/packets", {
       method: "POST", headers: { "content-type": "application/json" },
       body: JSON.stringify({ id, value }),
     });
-    setPackets(p => p.map(x => x.id === id ? { ...x, doc_link: value || null } : x));
+    const j = await res.json().catch(() => ({ ok: false }));
+    if (j.warning) setRowNotice(n => ({ ...n, [id]: j.warning }));
+    await load();
     setSavingKey(null);
+  };
+
+  const refresh = async (id: number) => {
+    setRefreshingId(id);
+    setRowNotice(n => ({ ...n, [id]: "" }));
+    const res = await fetch("/api/admin/packets", {
+      method: "POST", headers: { "content-type": "application/json" },
+      body: JSON.stringify({ action: "refresh", id }),
+    });
+    const j = await res.json().catch(() => ({ ok: false }));
+    if (!j.ok) setRowNotice(n => ({ ...n, [id]: j.error || "Refresh failed." }));
+    await load();
+    setRefreshingId(null);
   };
 
   const addPacket = async () => {
@@ -67,7 +88,8 @@ export default function PacketLinksManager() {
     <div className="rounded-2xl border border-edge bg-panel p-5 shadow-card">
       <div className="mb-1 font-mono text-[11px] uppercase tracking-widest text-mute">Manage packet links</div>
       <p className="mb-4 text-sm text-mute">
-        Paste the real doc URL for each row below — these go live on the Packets page immediately.
+        Paste the real doc URL for each row below. Content is pulled in from the doc and rendered on the Packets
+        page itself — use Refresh after editing the source doc to pick up changes.
       </p>
 
       {error && (
@@ -84,27 +106,41 @@ export default function PacketLinksManager() {
         {packets.map(p => {
           const key = `p-${p.id}`;
           const val = draft[key] ?? p.doc_link ?? "";
+          const notice = rowNotice[p.id];
           return (
-            <div key={p.id} className="flex flex-wrap items-center gap-2 rounded-xl border border-edge/60 bg-panel2 p-2.5">
-              <div className="min-w-[180px] flex-1 basis-[220px]">
-                <div className="text-sm">{p.role} <span className="text-mute">· {p.yoe}</span></div>
-                {p.doc_title && <div className="font-mono text-[11px] text-mute">{p.doc_title}</div>}
+            <div key={p.id} className="rounded-xl border border-edge/60 bg-panel2 p-2.5">
+              <div className="flex flex-wrap items-center gap-2">
+                <div className="min-w-[180px] flex-1 basis-[220px]">
+                  <div className="text-sm">{p.role} <span className="text-mute">· {p.yoe}</span></div>
+                  {p.doc_title && <div className="font-mono text-[11px] text-mute">{p.doc_title}</div>}
+                  <div className="font-mono text-[11px] text-mute">
+                    {p.content_synced_at ? `Content synced ${new Date(p.content_synced_at).toLocaleString()}` : "Content not synced yet"}
+                  </div>
+                </div>
+                <input
+                  value={val}
+                  onChange={e => setDraft(d => ({ ...d, [key]: e.target.value }))}
+                  placeholder="https://docs.google.com/..."
+                  className="min-w-[220px] flex-[2] rounded-lg border border-edge bg-panel px-2.5 py-1.5 text-sm text-text placeholder:text-mute/60 focus:border-acad focus:outline-none"
+                />
+                <button
+                  onClick={() => save(p.id, key)}
+                  disabled={savingKey === key}
+                  className="rounded-lg border border-edge px-3 py-1.5 text-sm text-mute hover:text-text disabled:opacity-50"
+                >{savingKey === key ? "Saving…" : "Save"}</button>
+                <button
+                  onClick={() => refresh(p.id)}
+                  disabled={!p.doc_link || refreshingId === p.id}
+                  className="rounded-lg border border-edge px-3 py-1.5 text-sm text-mute hover:text-text disabled:opacity-50"
+                >{refreshingId === p.id ? "Refreshing…" : "Refresh content"}</button>
+                <button
+                  onClick={() => removePacket(p.id)}
+                  className="rounded-lg border border-edge px-3 py-1.5 text-sm text-mute hover:text-devops"
+                >Remove</button>
               </div>
-              <input
-                value={val}
-                onChange={e => setDraft(d => ({ ...d, [key]: e.target.value }))}
-                placeholder="https://docs.google.com/..."
-                className="min-w-[220px] flex-[2] rounded-lg border border-edge bg-panel px-2.5 py-1.5 text-sm text-text placeholder:text-mute/60 focus:border-acad focus:outline-none"
-              />
-              <button
-                onClick={() => save(p.id, key)}
-                disabled={savingKey === key}
-                className="rounded-lg border border-edge px-3 py-1.5 text-sm text-mute hover:text-text disabled:opacity-50"
-              >{savingKey === key ? "Saving…" : "Save"}</button>
-              <button
-                onClick={() => removePacket(p.id)}
-                className="rounded-lg border border-edge px-3 py-1.5 text-sm text-mute hover:text-devops"
-              >Remove</button>
+              {notice && (
+                <div className="mt-2 rounded-lg border border-devops/40 bg-devops/10 px-2.5 py-1.5 text-xs text-devops">{notice}</div>
+              )}
             </div>
           );
         })}

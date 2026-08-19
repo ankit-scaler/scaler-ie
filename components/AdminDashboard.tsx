@@ -21,6 +21,15 @@ const RANGES = [
 const todayStr = () => new Date().toISOString().slice(0, 10);
 const daysAgoStr = (n: number) => new Date(Date.now() - n * 86400_000).toISOString().slice(0, 10);
 
+function formatDuration(totalMinutes: number) {
+  if (totalMinutes < 60) return `${totalMinutes}m`;
+  const days  = Math.floor(totalMinutes / 1440);
+  const hours = Math.floor((totalMinutes % 1440) / 60);
+  const mins  = totalMinutes % 60;
+  if (days > 0) return hours > 0 ? `${days}d ${hours}h` : `${days}d`;
+  return mins > 0 ? `${hours}h ${mins}m` : `${hours}h`;
+}
+
 function csvEscape(v: unknown) {
   const s = String(v ?? "");
   return /[",\n]/.test(s) ? `"${s.replace(/"/g, '""')}"` : s;
@@ -281,7 +290,7 @@ export default function AdminDashboard({ me }: { me: string }) {
       <section className="grid grid-cols-2 gap-3 md:grid-cols-4">
         <Stat label="Unique users" value={uniqueUsers} />
         <Stat label="Total views" value={data?.views.length ?? 0} />
-        <Stat label="Total minutes" value={totalMinutes} />
+        <Stat label="Time on site" value={formatDuration(totalMinutes)} />
         <Stat label="Admins" value={data?.admins.length ?? 0} />
       </section>
 
@@ -361,43 +370,15 @@ export default function AdminDashboard({ me }: { me: string }) {
         <div className="overflow-x-auto">
           <table className="w-full text-sm">
             <thead className="text-left font-mono text-[11px] uppercase tracking-widest text-mute">
-              <tr><th className="py-2">Email</th><th className="py-2">Views</th><th className="py-2">Minutes</th><th className="py-2">Last seen</th></tr>
+              <tr><th className="py-2">Email</th><th className="py-2">Views</th><th className="py-2">Time on site</th><th className="py-2">Last seen</th></tr>
             </thead>
             <tbody className="divide-y divide-edge/60">
               {perUser.map(u => (
                 <tr key={u.email}>
                   <td className="py-2">{u.email}</td>
                   <td className="py-2 font-mono text-xs">{u.views}</td>
-                  <td className="py-2 font-mono text-xs">{u.minutes}</td>
+                  <td className="py-2 font-mono text-xs">{formatDuration(u.minutes)}</td>
                   <td className="py-2 font-mono text-xs text-mute">{new Date(u.last).toLocaleString()}</td>
-                </tr>
-              ))}
-            </tbody>
-          </table>
-        </div>
-      </Card>
-
-      <Card title={`Packets — by user (${packetPerUser.length})`}>
-        <div className="max-h-[360px] overflow-y-auto">
-          <table className="w-full text-sm">
-            <thead className="sticky top-0 bg-panel text-left font-mono text-[11px] uppercase tracking-widest text-mute">
-              <tr>
-                <th className="py-2">Email</th>
-                <th className="py-2">First activity</th>
-                <th className="py-2">Last activity</th>
-                <th className="py-2 text-right">Packets read</th>
-              </tr>
-            </thead>
-            <tbody className="divide-y divide-edge/60">
-              {packetPerUser.length === 0 && (
-                <tr><td colSpan={4} className="py-4 text-mute">No packet activity yet in this window.</td></tr>
-              )}
-              {packetPerUser.map(u => (
-                <tr key={u.email}>
-                  <td className="py-2">{u.email}</td>
-                  <td className="py-2 font-mono text-xs text-mute">{new Date(u.first).toLocaleString()}</td>
-                  <td className="py-2 font-mono text-xs text-mute">{new Date(u.last).toLocaleString()}</td>
-                  <td className="py-2 text-right font-mono text-xs">{u.packetsRead}</td>
                 </tr>
               ))}
             </tbody>
@@ -486,11 +467,11 @@ export default function AdminDashboard({ me }: { me: string }) {
   );
 }
 
-function Stat({ label, value }: { label: string; value: number }) {
+function Stat({ label, value }: { label: string; value: number | string }) {
   return (
     <div className="rounded-2xl border border-edge bg-panel p-5 shadow-card">
       <div className="font-mono text-[11px] uppercase tracking-widest text-mute">{label}</div>
-      <div className="mt-1 font-display text-4xl">{value.toLocaleString()}</div>
+      <div className="mt-1 font-display text-4xl">{typeof value === "number" ? value.toLocaleString() : value}</div>
     </div>
   );
 }

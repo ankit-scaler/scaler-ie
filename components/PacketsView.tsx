@@ -1,15 +1,13 @@
 "use client";
 import { useMemo, useState } from "react";
+import Link from "next/link";
 
-type Packet = { id: number; role: string; yoe: string; doc_link: string | null; sort_order: number };
+type Packet = { id: number; role: string; yoe: string; doc_link: string | null; sort_order: number; content_synced_at: string | null };
 
 export default function PacketsView({ packets }: { packets: Packet[] }) {
   const roles = useMemo(() => ["All", ...Array.from(new Set(packets.map(p => p.role)))], [packets]);
   const [role, setRole] = useState("All");
   const filtered = role === "All" ? packets : packets.filter(p => p.role === role);
-
-  const trackPacket = (id: number) =>
-    fetch("/api/track-packet", { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify({ packet_id: id }) }).catch(() => {});
 
   return (
     <div className="space-y-8">
@@ -38,17 +36,15 @@ export default function PacketsView({ packets }: { packets: Packet[] }) {
         </div>
       ) : (
         <div className="grid grid-cols-1 gap-4 md:grid-cols-2 xl:grid-cols-3">
-          {filtered.map(p => (
-            <PacketCard key={p.id} packet={p} onOpenPacket={() => trackPacket(p.id)} />
-          ))}
+          {filtered.map(p => <PacketCard key={p.id} packet={p} />)}
         </div>
       )}
     </div>
   );
 }
 
-function PacketCard({ packet, onOpenPacket }: { packet: Packet; onOpenPacket: () => void }) {
-  const hasDoc = packet.doc_link && /^https?:\/\//i.test(packet.doc_link);
+function PacketCard({ packet }: { packet: Packet }) {
+  const hasDoc = packet.content_synced_at || (packet.doc_link && /^https?:\/\//i.test(packet.doc_link));
   return (
     <article className="group relative overflow-hidden rounded-2xl border border-edge bg-panel p-5 shadow-card transition-shadow hover:shadow-cardH">
       <div className="absolute inset-x-0 top-0 h-px bg-gradient-to-r from-acad/60 to-transparent" />
@@ -59,15 +55,13 @@ function PacketCard({ packet, onOpenPacket }: { packet: Packet; onOpenPacket: ()
       <div className="mb-4 font-display text-lg leading-snug">{packet.role} — {packet.yoe}</div>
 
       {hasDoc ? (
-        <a
-          href={packet.doc_link!}
-          target="_blank" rel="noreferrer"
-          onClick={onOpenPacket}
+        <Link
+          href={`/packets/${packet.id}`}
           className="inline-flex items-center gap-2 rounded-xl border border-edge bg-panel2 px-3.5 py-2 text-sm text-text transition hover:border-text/40"
         >
-          Open packet
+          {packet.content_synced_at ? "Read packet" : "Open packet"}
           <svg className="h-3.5 w-3.5" viewBox="0 0 20 20" fill="currentColor"><path d="M7 3h10v10h-2V6.4L4.7 16.7 3.3 15.3 13.6 5H7V3z"/></svg>
-        </a>
+        </Link>
       ) : (
         <span className="inline-flex items-center gap-2 rounded-xl border border-edge/60 bg-panel2/50 px-3.5 py-2 text-sm text-mute">
           Coming soon
