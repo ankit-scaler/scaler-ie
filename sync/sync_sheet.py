@@ -136,8 +136,12 @@ def sync_allowed_learners(gc, supa):
     rows = [{"email": e, "synced_at": now, "added_by": None} for e in emails]
     for i in range(0, len(rows), 500):
         supa.table("allowed_learners").upsert(rows[i:i+500], on_conflict="email").execute()
-    supa.table("allowed_learners").delete().is_("added_by", "null").not_.in_("email", list(emails)).execute()
-    print(f"learner allow-list: synced {len(emails)} emails")
+
+    existing = supa.table("allowed_learners").select("email").is_("added_by", "null").execute()
+    stale = [r["email"] for r in existing.data if r["email"] not in emails]
+    for i in range(0, len(stale), 200):
+        supa.table("allowed_learners").delete().in_("email", stale[i:i+200]).execute()
+    print(f"learner allow-list: synced {len(emails)} emails, removed {len(stale)} stale")
 
 def main():
     creds = Credentials.from_service_account_info(
