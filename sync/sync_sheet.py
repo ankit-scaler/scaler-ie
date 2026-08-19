@@ -150,9 +150,15 @@ def main():
         if all_vals:
             headers = dedupe_headers(all_vals[0])
             link_col_idx = None
-            for i, h in enumerate(headers):
-                if "assignment link" in h.lower():
-                    link_col_idx = i; break
+            link_col_candidates = [i for i, h in enumerate(headers) if "assignment link" in h.lower()]
+            if link_col_candidates:
+                link_col_idx = link_col_candidates[0]
+            chosen_header = headers[link_col_idx] if link_col_idx is not None else None
+            print(
+                f"assignment link column: candidates={[(i, headers[i]) for i in link_col_candidates]} "
+                f"using index={link_col_idx} header={chosen_header!r}",
+                file=sys.stderr,
+            )
 
             n_data_rows = len(all_vals) - 1
             hyperlinks = fetch_column_hyperlinks(
@@ -162,6 +168,7 @@ def main():
             )
 
             a_rows = []
+            missing_logged = 0
             for row_i, raw in enumerate(all_vals[1:], start=2):
                 row = dict(zip(headers, raw + [""] * (len(headers) - len(raw))))
                 company = get_col(row, "Company")
@@ -169,10 +176,18 @@ def main():
                 program = get_col(row, "Program")
                 rnd     = get_col(row, "# Round") or get_col(row, "Round")
                 link_txt = norm(raw[link_col_idx]) if link_col_idx is not None and link_col_idx < len(raw) else ""
-                link = hyperlinks[row_i - 2] if (row_i - 2) < len(hyperlinks) else None
+                api_link = hyperlinks[row_i - 2] if (row_i - 2) < len(hyperlinks) else None
+                link = api_link
                 if not link and link_txt.lower().startswith(("http://", "https://")):
                     link = link_txt
                 if not (company and role): continue
+                if not link and missing_logged < 15:
+                    print(
+                        f"assignment row {row_i} [{company} / {role}]: no link found "
+                        f"(cell text={link_txt!r}, api hyperlink={api_link!r})",
+                        file=sys.stderr,
+                    )
+                    missing_logged += 1
                 a_rows.append({
                     "program": program,
                     "company": company,
@@ -182,7 +197,8 @@ def main():
                     "fingerprint": fp(program, company, role, rnd, link),
                 })
             a_rows = dedupe_by_fp(a_rows)
-            print(f"unique assignments: {len(a_rows)}")
+            n_with_link = sum(1 for r in a_rows if r["link"])
+            print(f"unique assignments: {len(a_rows)} ({n_with_link} with a link)")
             for i in range(0, len(a_rows), 500):
                 supa.table("assignments").upsert(a_rows[i:i+500], on_conflict="fingerprint").execute()
     except Exception as e:
