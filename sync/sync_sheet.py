@@ -2,7 +2,7 @@
 Daily sync: Google Sheet -> Supabase.
 Reads 4 Question tabs + Assignments tab, dedupes, upserts by fingerprint.
 """
-import os, json, hashlib, sys
+import os, json, hashlib, sys, re
 from datetime import datetime
 import gspread
 from google.oauth2.service_account import Credentials
@@ -56,20 +56,44 @@ def dedupe_by_fp(rows):
         out.append(r)
     return out
 
-def get_hyperlink(ws, cell_a1):
+def col_letter(col_idx1):
+    return re.sub(r"\d+$", "", gspread.utils.rowcol_to_a1(1, col_idx1))
+
+def fetch_column_hyperlinks(sh, tab_name, col_idx1, n_rows):
+    """Real URL behind each data-row cell in this column (row 2..n_rows+1),
+    however it was attached: a =HYPERLINK() formula, a whole-cell "Insert
+    link", or a link applied to just part of the cell's text (the common case
+    when the display text is a label like "Assignment Link" rather than the
+    URL itself — plain get_all_values() can't see that link at all).
+    None where a row has no link. Padded/truncated to length n_rows.
+    """
+    if not col_idx1 or n_rows <= 0:
+        return []
+    col = col_letter(col_idx1)
+    rng = f"'{tab_name}'!{col}2:{col}{n_rows + 1}"
     try:
-        res = ws.spreadsheet.values_get(
-            f"'{ws.title}'!{cell_a1}",
-            params={"valueRenderOption": "FORMULA"}
-        )
-        v = res.get("values", [[""]])[0][0]
-        if isinstance(v, str) and v.startswith("=HYPERLINK("):
-            inside = v[len("=HYPERLINK("):-1]
-            url = inside.split(",")[0].strip().strip('"')
-            return url
-    except Exception:
-        pass
-    return None
+        meta = sh.fetch_sheet_metadata(params={
+            "ranges": rng,
+            "fields": "sheets.data.rowData.values(hyperlink,textFormatRuns.format.link.uri)",
+        })
+        row_data = meta["sheets"][0]["data"][0].get("rowData", [])
+    except Exception as e:
+        print(f"fetch_column_hyperlinks failed: {e}", file=sys.stderr)
+        row_data = []
+
+    out = []
+    for r in row_data:
+        vals = r.get("values") or [{}]
+        cell = vals[0] if vals else {}
+        link = cell.get("hyperlink")
+        if not link:
+            for run in cell.get("textFormatRuns") or []:
+                uri = (run.get("format") or {}).get("link", {}).get("uri")
+                if uri:
+                    link = uri; break
+        out.append(link)
+    out += [None] * (n_rows - len(out))
+    return out
 
 def main():
     creds = Credentials.from_service_account_info(
@@ -130,6 +154,13 @@ def main():
                 if "assignment link" in h.lower():
                     link_col_idx = i; break
 
+            n_data_rows = len(all_vals) - 1
+            hyperlinks = fetch_column_hyperlinks(
+                sh, ASSIGNMENT_TAB,
+                (link_col_idx + 1) if link_col_idx is not None else None,
+                n_data_rows,
+            )
+
             a_rows = []
             for row_i, raw in enumerate(all_vals[1:], start=2):
                 row = dict(zip(headers, raw + [""] * (len(headers) - len(raw))))
@@ -137,11 +168,10 @@ def main():
                 role    = get_col(row, "Role")
                 program = get_col(row, "Program")
                 rnd     = get_col(row, "# Round") or get_col(row, "Round")
-                link_txt = raw[link_col_idx] if link_col_idx is not None and link_col_idx < len(raw) else ""
-                link = None
-                if link_col_idx is not None:
-                    a1 = gspread.utils.rowcol_to_a1(row_i, link_col_idx + 1)
-                    link = get_hyperlink(ws, a1) or link_txt
+                link_txt = norm(raw[link_col_idx]) if link_col_idx is not None and link_col_idx < len(raw) else ""
+                link = hyperlinks[row_i - 2] if (row_i - 2) < len(hyperlinks) else None
+                if not link and link_txt.lower().startswith(("http://", "https://")):
+                    link = link_txt
                 if not (company and role): continue
                 a_rows.append({
                     "program": program,
