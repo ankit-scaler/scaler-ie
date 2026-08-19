@@ -14,14 +14,22 @@ export default function Header() {
   const sb = supabaseBrowser();
 
   useEffect(() => {
-    sb.auth.getUser().then(async ({ data }) => {
-      const e = data.user?.email ?? null;
+    const applyUser = async (e: string | null) => {
       setEmail(e);
       if (e) {
         const r = await fetch("/api/admin/stats?check=1");
         setAdmin(r.ok);
+      } else {
+        setAdmin(false);
       }
+    };
+
+    sb.auth.getUser().then(({ data }) => applyUser(data.user?.email ?? null));
+
+    const { data: sub } = sb.auth.onAuthStateChange((_event, session) => {
+      applyUser(session?.user?.email ?? null);
     });
+    return () => sub.subscription.unsubscribe();
   }, []);
 
   const tab = (href: string, label: string) => (
@@ -44,12 +52,14 @@ export default function Header() {
           <ScalerLogo className="h-6 w-auto text-text" />
           <span className="hidden font-display text-xl leading-none sm:inline">Interview Vault</span>
         </Link>
-        <nav className="flex items-center gap-1 overflow-x-auto">
-          {tab("/", "Questions")}
-          {tab("/assignments", "Assignments")}
-          {tab("/packets", "Packets for Hirings")}
-          {isAdmin && tab("/admin", "Admin")}
-        </nav>
+        {email && (
+          <nav className="flex items-center gap-1 overflow-x-auto">
+            {tab("/", "Questions")}
+            {tab("/assignments", "Assignments")}
+            {tab("/packets", "Packets for Hirings")}
+            {isAdmin && tab("/admin", "Admin")}
+          </nav>
+        )}
         <div className="flex items-center gap-3">
           <ThemeToggle />
           {email ? (
