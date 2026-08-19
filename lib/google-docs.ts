@@ -17,19 +17,40 @@ function getAuth() {
   });
 }
 
-// Google's HTML export wraps every span in inline color/font styles meant for
-// their own editor chrome. Dropping style/class (by omitting them from
-// allowedAttributes) lets the site's own theme control appearance instead.
-// Images are stripped too: exported <img> src URLs point at Google's CDN and
-// commonly 403 in a plain <img> tag when the doc isn't link-shareable.
+// Google's HTML export carries bold/italic/heading/table-shading as inline
+// styles on <span>/<td> rather than semantic tags, so we can't just drop
+// `style` wholesale without losing all formatting. Instead we keep a narrow,
+// theme-safe allowlist: structural styles (bold, italic, underline, align)
+// everywhere, and background-color/color only on table cells, where Google
+// always sets both together (self-contained contrast, safe in any theme).
+// Plain-text color is never allowed — that's what would go invisible against
+// the site's own dark background. Images are stripped: exported <img> src
+// URLs point at Google's CDN and commonly 403 outside Google's own viewer.
 function cleanDocHtml(raw: string): string {
+  const cellColor = {
+    "background-color": [/^#[0-9a-fA-F]{3,8}$/, /^rgb\(\s*\d+\s*,\s*\d+\s*,\s*\d+\s*\)$/],
+    color: [/^#[0-9a-fA-F]{3,8}$/, /^rgb\(\s*\d+\s*,\s*\d+\s*,\s*\d+\s*\)$/],
+  };
   return sanitizeHtml(raw, {
     allowedTags: [
-      "h1", "h2", "h3", "h4", "p", "br", "strong", "b", "em", "i", "u", "s",
+      "h1", "h2", "h3", "h4", "p", "br", "span", "strong", "b", "em", "i", "u", "s",
       "ul", "ol", "li", "a", "table", "thead", "tbody", "tr", "th", "td", "blockquote", "hr",
     ],
     allowedAttributes: {
       a: ["href"],
+      "*": ["style"],
+      td: ["colspan", "rowspan"],
+      th: ["colspan", "rowspan"],
+    },
+    allowedStyles: {
+      "*": {
+        "font-weight": [/^(bold|bolder|[5-9]00)$/],
+        "font-style": [/^italic$/],
+        "text-decoration": [/^underline$/, /^line-through$/],
+        "text-align": [/^(left|center|right|justify)$/],
+      },
+      td: cellColor,
+      th: cellColor,
     },
     allowedSchemes: ["http", "https", "mailto"],
     exclusiveFilter: frame => frame.tag === "p" && !frame.text.trim(),

@@ -90,6 +90,7 @@ body::before {
 .doc-content { color: rgb(var(--text)); line-height: 1.7; }
 .doc-content h1, .doc-content h2, .doc-content h3, .doc-content h4 {
   font-family: '"Instrument Serif"', serif;
+  font-weight: 700;
   line-height: 1.25;
   margin: 1.4em 0 0.5em;
 }
@@ -99,7 +100,10 @@ body::before {
 .doc-content h4 { font-size: 1.1rem; }
 .doc-content p { margin: 0.9em 0; }
 .doc-content ul, .doc-content ol { margin: 0.9em 0; padding-left: 1.4em; }
+.doc-content ul { list-style: disc; }
+.doc-content ol { list-style: decimal; }
 .doc-content li { margin: 0.35em 0; }
+.doc-content li::marker { color: rgb(var(--mute)); }
 .doc-content a { color: rgb(var(--acad)); text-decoration: underline; text-underline-offset: 2px; }
 .doc-content blockquote {
   margin: 1em 0; padding: 0.25em 1em;
