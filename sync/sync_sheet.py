@@ -259,7 +259,7 @@ def main():
                 n_data_rows,
             )
 
-            a_rows = []
+            candidates = []
             missing_logged = 0
             for row_i, raw in enumerate(all_vals[1:], start=2):
                 row = dict(zip(headers, raw + [""] * (len(headers) - len(raw))))
@@ -280,25 +280,47 @@ def main():
                         file=sys.stderr,
                     )
                     missing_logged += 1
-                a_rows.append({
-                    "program": program,
-                    "company": company,
-                    "role": role,
-                    "round": rnd,
-                    "link": link,
-                    # link is deliberately excluded: it's a mutable field on an
-                    # otherwise-stable (program, company, role, round) identity.
-                    # Including it here means every time link-extraction improves,
-                    # the fingerprint changes and upsert creates a duplicate row
-                    # instead of updating the existing one in place.
-                    "fingerprint": fp(program, company, role, rnd),
-                    # explicit None (not omitted): if an admin-added row's
-                    # fingerprint later matches a real sheet posting, the
-                    # sheet takes ownership of it going forward — same
-                    # convention as the learner allow-list sync.
-                    "added_by": None,
-                })
-            a_rows = dedupe_by_fp(a_rows)
+                candidates.append({"program": program, "company": company, "role": role, "round": rnd, "link": link})
+
+            # Multiple candidates commonly get assigned the identical posting —
+            # those collapse to one card. But if a (program, company, role,
+            # round) group has more than one *distinct* link, that's actually
+            # more than one real posting (e.g. different task variants across
+            # hiring rounds), so each distinct link gets its own card instead
+            # of silently keeping just the first-seen one.
+            groups = {}
+            for c in candidates:
+                key = (c["program"], c["company"], c["role"], c["round"])
+                groups.setdefault(key, []).append(c["link"])
+
+            a_rows = []
+            for (program, company, role, rnd), links in groups.items():
+                distinct_links = []
+                for l in links:
+                    if l and l not in distinct_links:
+                        distinct_links.append(l)
+                if len(distinct_links) <= 1:
+                    a_rows.append({
+                        "program": program, "company": company, "role": role, "round": rnd,
+                        "link": distinct_links[0] if distinct_links else None,
+                        # link excluded from the fingerprint here: it's the
+                        # single-link (common) case, so the identity stays
+                        # stable even as link-extraction improves over time —
+                        # upsert updates this same row in place.
+                        "fingerprint": fp(program, company, role, rnd),
+                        "added_by": None,
+                    })
+                else:
+                    for link in distinct_links:
+                        a_rows.append({
+                            "program": program, "company": company, "role": role, "round": rnd,
+                            "link": link,
+                            # link included here: multiple distinct links for
+                            # the same posting means each is a real, separate
+                            # assignment, so each needs its own stable identity.
+                            "fingerprint": fp(program, company, role, rnd, link),
+                            "added_by": None,
+                        })
             n_with_link = sum(1 for r in a_rows if r["link"])
             print(f"unique assignments: {len(a_rows)} ({n_with_link} with a link)")
             for i in range(0, len(a_rows), 500):
