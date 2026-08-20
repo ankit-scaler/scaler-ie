@@ -14,7 +14,7 @@ export default function QuestionsView({ initial }: { initial: Q[] }) {
   const filtered = useMemo(() => {
     const qLower = state.q.trim().toLowerCase();
     return initial.filter(x =>
-      (state.program === "All" || x.program === state.program) &&
+      (state.program === "All" || x.program.toLowerCase() === state.program.toLowerCase()) &&
       (state.company === "All" || x.company.trim() === state.company.trim()) &&
       (state.role === "All"    || x.role.trim()    === state.role.trim()) &&
       (state.round === "All"   || (x.round || "")  === state.round) &&

@@ -1,6 +1,7 @@
 "use client";
 import { useMemo, useState } from "react";
 import Link from "next/link";
+import { motion } from "framer-motion";
 
 type Packet = { id: number; role: string; yoe: string; doc_link: string | null; sort_order: number; content_synced_at: string | null; hasVideoResources: boolean };
 
@@ -36,17 +37,23 @@ export default function PacketsView({ packets }: { packets: Packet[] }) {
         </div>
       ) : (
         <div className="grid grid-cols-1 gap-4 md:grid-cols-2 xl:grid-cols-3">
-          {filtered.map(p => <PacketCard key={p.id} packet={p} />)}
+          {filtered.map((p, i) => <PacketCard key={p.id} packet={p} index={i} />)}
         </div>
       )}
     </div>
   );
 }
 
-function PacketCard({ packet }: { packet: Packet }) {
+function PacketCard({ packet, index }: { packet: Packet; index: number }) {
   const hasDoc = packet.content_synced_at || (packet.doc_link && /^https?:\/\//i.test(packet.doc_link));
   return (
-    <article className="group relative overflow-hidden rounded-2xl border border-edge bg-panel p-5 shadow-card transition-shadow hover:shadow-cardH">
+    <motion.article
+      initial={{ opacity: 0, y: 14 }}
+      animate={{ opacity: 1, y: 0 }}
+      transition={{ duration: 0.35, delay: Math.min(index * 0.02, 0.3) }}
+      whileHover={{ y: -3 }}
+      className="group relative overflow-hidden rounded-2xl border border-edge bg-panel p-5 shadow-card transition-shadow hover:shadow-cardH"
+    >
       <div className="absolute inset-x-0 top-0 h-px bg-gradient-to-r from-acad/60 to-transparent" />
       <div className="mb-3 flex flex-wrap gap-2 text-xs">
         <span className="rounded-full border border-edge bg-panel2 px-2.5 py-0.5 font-mono">{packet.role}</span>
@@ -82,6 +89,6 @@ function PacketCard({ packet }: { packet: Packet }) {
           </span>
         )}
       </div>
-    </article>
+    </motion.article>
   );
 }

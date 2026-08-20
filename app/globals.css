@@ -65,6 +65,15 @@
 }
 
 html, body { background: rgb(var(--ink)); transition: background-color .15s ease; }
+body { line-height: 1.6; }
+
+/* Page-load entrance animation, replayed per route by PageTransition
+   (re-keys its wrapper div on pathname change so the animation re-fires). */
+@keyframes fadeInUp {
+  from { opacity: 0; transform: translateY(10px); }
+  to   { opacity: 1; transform: translateY(0); }
+}
+.animate-fade-in-up { animation: fadeInUp .5s cubic-bezier(.16,1,.3,1) both; }
 
 /* subtle noise for depth */
 body::before {
@@ -89,7 +98,7 @@ body::before {
 /* Rendered, sanitized Google Doc content on the packet reader page */
 .doc-content { color: rgb(var(--text)); line-height: 1.75; font-size: 0.975rem; }
 .doc-content h1, .doc-content h2, .doc-content h3, .doc-content h4 {
-  font-family: '"Instrument Serif"', serif;
+  font-family: "Sora", system-ui, sans-serif;
   font-weight: 700;
   line-height: 1.25;
   color: rgb(var(--text));

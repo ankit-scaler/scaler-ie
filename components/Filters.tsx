@@ -5,7 +5,9 @@ export type FilterState = {
   program: string; company: string; role: string; round: string; q: string;
 };
 
-const PROGRAMS = ["All", "Academy", "DSML", "AIML", "DevOps"];
+// Canonical spelling + display order for known programs; anything else found
+// in the data (unexpected casing, a brand-new program) is appended after.
+const CANONICAL_PROGRAMS = ["Academy", "DSML", "AIML", "DevOps"];
 
 export default function Filters({
   data, state, setState, showRound = true,
@@ -15,8 +17,17 @@ export default function Filters({
   setState: (s: FilterState) => void;
   showRound?: boolean;
 }) {
+  // Only show a program pill if this dataset actually has rows for it — e.g.
+  // AIML shouldn't appear on Assignments if no assignment has that program.
+  const programs = useMemo(() => {
+    const present = Array.from(new Set(data.map(d => (d.program || "").trim()).filter(Boolean)));
+    const known = CANONICAL_PROGRAMS.filter(c => present.some(p => p.toLowerCase() === c.toLowerCase()));
+    const extra = present.filter(p => !CANONICAL_PROGRAMS.some(c => c.toLowerCase() === p.toLowerCase())).sort();
+    return ["All", ...known, ...extra];
+  }, [data]);
+
   const filteredForCompany = useMemo(
-    () => (state.program === "All" ? data : data.filter(d => d.program === state.program)),
+    () => (state.program === "All" ? data : data.filter(d => (d.program || "").toLowerCase() === state.program.toLowerCase())),
     [data, state.program]
   );
   const companies = useMemo(
@@ -69,7 +80,7 @@ export default function Filters({
   return (
     <div className="space-y-4">
       <div className="flex flex-wrap gap-1.5">
-        {PROGRAMS.map(p => (
+        {programs.map(p => (
           <Pill key={p} value={p} active={state.program === p}
             onClick={() => setState({ ...state, program: p, company: "All", role: "All", round: "All" })} />
         ))}

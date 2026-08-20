@@ -16,7 +16,7 @@ export default function AssignmentsView({ initial }: { initial: A[] }) {
   const filtered = useMemo(() => {
     const qL = state.q.trim().toLowerCase();
     return initial.filter(x =>
-      (state.program === "All" || (x.program || "") === state.program) &&
+      (state.program === "All" || (x.program || "").toLowerCase() === state.program.toLowerCase()) &&
       (state.company === "All" || x.company.trim() === state.company.trim()) &&
       (state.role === "All"    || x.role.trim()    === state.role.trim()) &&
       (!qL || `${x.company} ${x.role}`.toLowerCase().includes(qL))

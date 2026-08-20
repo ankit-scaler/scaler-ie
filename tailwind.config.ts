@@ -16,7 +16,7 @@ export default {
         devops: "rgb(var(--devops) / <alpha-value>)",
       },
       fontFamily: {
-        display: ['"Instrument Serif"', "serif"],
+        display: ["Sora", "system-ui", "sans-serif"],
         sans:    ["Inter", "system-ui", "sans-serif"],
         mono:    ['"JetBrains Mono"', "ui-monospace", "monospace"],
       },
