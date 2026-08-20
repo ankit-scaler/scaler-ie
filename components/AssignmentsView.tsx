@@ -3,7 +3,7 @@ import { useMemo, useState, useEffect } from "react";
 import Filters, { FilterState } from "./Filters";
 import AssignmentCard from "./AssignmentCard";
 
-type A = { id: number; program: string | null; company: string; role: string; round: string | null; link: string | null };
+export type A = { id: number; program: string | null; company: string; role: string; round: string | null; link: string | null };
 
 export default function AssignmentsView({ initial }: { initial: A[] }) {
   const [state, setState] = useState<FilterState>({ program: "All", company: "All", role: "All", round: "All", q: "" });

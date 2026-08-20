@@ -31,12 +31,12 @@ export default function QuestionCard({
     >
       <div className={`absolute inset-x-0 top-0 h-px bg-gradient-to-r ${PROG_COLOR[prog]}`} />
       <div className="mb-3 flex flex-wrap items-center gap-2 text-xs">
-        <span className="inline-flex items-center gap-1.5 rounded-full border border-edge bg-panel2 px-2.5 py-0.5 font-mono">
+        <span className="inline-flex items-center gap-1.5 rounded-full border border-edge bg-panel2 px-3 py-1 font-medium">
           <span className={`h-1.5 w-1.5 rounded-full ${DOT[prog]}`} />{q.program}
         </span>
-        <span className="rounded-full border border-edge bg-panel2 px-2.5 py-0.5 font-mono text-mute">{q.company.trim()}</span>
-        <span className="rounded-full border border-edge bg-panel2 px-2.5 py-0.5 font-mono text-mute">{q.role.trim()}</span>
-        {q.round && <span className="rounded-full border border-edge bg-panel2 px-2.5 py-0.5 font-mono text-mute">{q.round}</span>}
+        <span className="rounded-full border border-edge bg-panel2 px-3 py-1 text-mute">{q.company.trim()}</span>
+        <span className="rounded-full border border-edge bg-panel2 px-3 py-1 text-mute">{q.role.trim()}</span>
+        {q.round && <span className="rounded-full border border-edge bg-panel2 px-3 py-1 text-mute">{q.round}</span>}
       </div>
       <p className="whitespace-pre-wrap text-base leading-relaxed text-text">{q.question}</p>
       {q.related_topic && (

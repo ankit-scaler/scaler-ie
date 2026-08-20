@@ -1,4 +1,5 @@
 import { NextResponse } from "next/server";
+import { revalidateTag } from "next/cache";
 import { createHash } from "crypto";
 import { requireAdmin } from "@/lib/admin";
 import { supabaseAdmin } from "@/lib/supabase-server";
@@ -42,6 +43,7 @@ export async function POST(req: Request) {
     if (body.action === "create") {
       const { error } = await admin.from("assignments").insert({ program, company, role, round, link, fingerprint });
       if (error) return NextResponse.json({ ok: false, error: error.message }, { status: 400 });
+      revalidateTag("assignments");
       return NextResponse.json({ ok: true });
     }
 
@@ -49,6 +51,7 @@ export async function POST(req: Request) {
     if (!id) return NextResponse.json({ ok: false }, { status: 400 });
     const { error } = await admin.from("assignments").update({ program, company, role, round, link, fingerprint }).eq("id", id);
     if (error) return NextResponse.json({ ok: false, error: error.message }, { status: 400 });
+    revalidateTag("assignments");
     return NextResponse.json({ ok: true });
   }
 
@@ -56,6 +59,7 @@ export async function POST(req: Request) {
     const id = Number(body.id);
     if (!id) return NextResponse.json({ ok: false }, { status: 400 });
     await admin.from("assignments").delete().eq("id", id);
+    revalidateTag("assignments");
     return NextResponse.json({ ok: true });
   }
 

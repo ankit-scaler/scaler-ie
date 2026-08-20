@@ -3,7 +3,7 @@ import { useMemo, useState, useEffect } from "react";
 import Filters, { FilterState } from "./Filters";
 import QuestionCard from "./QuestionCard";
 
-type Q = { id: number; program: string; company: string; role: string; round: string | null; question: string; related_topic: string | null };
+export type Q = { id: number; program: string; company: string; role: string; round: string | null; question: string; related_topic: string | null };
 
 const PAGE = 30;
 

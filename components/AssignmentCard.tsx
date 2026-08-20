@@ -20,10 +20,10 @@ export default function AssignmentCard({
     >
       <div className="absolute inset-x-0 top-0 h-px bg-gradient-to-r from-aiml/60 to-transparent" />
       <div className="mb-3 flex flex-wrap gap-2 text-xs">
-        {a.program && <span className="rounded-full border border-edge bg-panel2 px-2.5 py-0.5 font-mono text-mute">{a.program}</span>}
-        <span className="rounded-full border border-edge bg-panel2 px-2.5 py-0.5 font-mono">{a.company.trim()}</span>
-        <span className="rounded-full border border-edge bg-panel2 px-2.5 py-0.5 font-mono text-mute">{a.role.trim()}</span>
-        {a.round && <span className="rounded-full border border-edge bg-panel2 px-2.5 py-0.5 font-mono text-mute">{a.round}</span>}
+        {a.program && <span className="rounded-full border border-edge bg-panel2 px-3 py-1 text-mute">{a.program}</span>}
+        <span className="rounded-full border border-edge bg-panel2 px-3 py-1 font-medium">{a.company.trim()}</span>
+        <span className="rounded-full border border-edge bg-panel2 px-3 py-1 text-mute">{a.role.trim()}</span>
+        {a.round && <span className="rounded-full border border-edge bg-panel2 px-3 py-1 text-mute">{a.round}</span>}
       </div>
       <div className="mb-4 font-display text-lg leading-snug">{a.company.trim()} — {a.role.trim()}</div>
       {hasLink ? (

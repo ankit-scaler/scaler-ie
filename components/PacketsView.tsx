@@ -56,8 +56,8 @@ function PacketCard({ packet, index }: { packet: Packet; index: number }) {
     >
       <div className="absolute inset-x-0 top-0 h-px bg-gradient-to-r from-acad/60 to-transparent" />
       <div className="mb-3 flex flex-wrap gap-2 text-xs">
-        <span className="rounded-full border border-edge bg-panel2 px-2.5 py-0.5 font-mono">{packet.role}</span>
-        <span className="rounded-full border border-edge bg-panel2 px-2.5 py-0.5 font-mono text-mute">{packet.yoe}</span>
+        <span className="rounded-full border border-edge bg-panel2 px-3 py-1 font-medium">{packet.role}</span>
+        <span className="rounded-full border border-edge bg-panel2 px-3 py-1 text-mute">{packet.yoe}</span>
       </div>
       <div className="mb-4 font-display text-lg leading-snug">{packet.role} — {packet.yoe}</div>
 
