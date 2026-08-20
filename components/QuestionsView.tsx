@@ -45,8 +45,8 @@ export default function QuestionsView({ initial }: { initial: Q[] }) {
         <div className="mb-6">
           <span className="font-mono text-[11px] uppercase tracking-widest text-mute">The Vault</span>
           <h1 className="mt-1 font-display text-4xl leading-tight sm:text-5xl">
-            {initial.length.toLocaleString()} questions,<br />
-            <span className="text-mute">asked in real interviews.</span>
+            Ace your interview<br />
+            with <span className="font-bold">Interview Experiences</span>
           </h1>
         </div>
         <Filters data={initial} state={state} setState={setState} />
