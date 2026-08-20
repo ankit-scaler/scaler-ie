@@ -30,15 +30,31 @@ def delete_stale(supa, table, kept_fingerprints, only_where_null=None):
     If only_where_null is a column name, rows are only considered when that
     column IS NULL — e.g. "added_by", so an admin-added assignment (not
     sourced from the sheet at all) is never swept up in a hard refresh."""
-    q = supa.table(table).select("id,fingerprint")
-    if only_where_null:
-        q = q.is_(only_where_null, "null")
-    existing = q.execute()
-    stale_ids = [r["id"] for r in existing.data if r["fingerprint"] not in kept_fingerprints]
+    existing = select_all(supa, table, "id,fingerprint", is_null_col=only_where_null)
+    stale_ids = [r["id"] for r in existing if r["fingerprint"] not in kept_fingerprints]
     for i in range(0, len(stale_ids), 200):
         supa.table(table).delete().in_("id", stale_ids[i:i+200]).execute()
     if stale_ids:
         print(f"{table}: hard refresh removed {len(stale_ids)} stale row(s)")
+
+def select_all(supa, table, select_cols, is_null_col=None):
+    """PostgREST caps a single select at 1000 rows by default — this pages
+    through with .range() until a short page signals the end, so tables like
+    `questions` (10k+ rows) get checked in full instead of silently only
+    the first 1000."""
+    PAGE = 1000
+    out, frm = [], 0
+    while True:
+        q = supa.table(table).select(select_cols)
+        if is_null_col:
+            q = q.is_(is_null_col, "null")
+        res = q.range(frm, frm + PAGE - 1).execute()
+        rows = res.data or []
+        out.extend(rows)
+        if len(rows) < PAGE:
+            break
+        frm += PAGE
+    return out
 
 QUESTION_TABS = {
     "Questions | Academy": {"round_col": "Round"},
@@ -160,8 +176,8 @@ def sync_allowed_learners(gc, supa):
     for i in range(0, len(rows), 500):
         supa.table("allowed_learners").upsert(rows[i:i+500], on_conflict="email").execute()
 
-    existing = supa.table("allowed_learners").select("email").is_("added_by", "null").execute()
-    stale = [r["email"] for r in existing.data if r["email"] not in emails]
+    existing = select_all(supa, "allowed_learners", "email", is_null_col="added_by")
+    stale = [r["email"] for r in existing if r["email"] not in emails]
     for i in range(0, len(stale), 200):
         supa.table("allowed_learners").delete().in_("email", stale[i:i+200]).execute()
     print(f"learner allow-list: synced {len(emails)} emails, removed {len(stale)} stale")
