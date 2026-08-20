@@ -48,9 +48,13 @@ export default function Header() {
   return (
     <header className="sticky top-0 z-40 border-b border-edge/60 bg-ink/70 backdrop-blur-xl">
       <div className="mx-auto flex max-w-7xl items-center justify-between px-4 py-3 sm:px-6">
-        <Link href="/" className="flex items-center gap-2.5">
+        <Link href="/" className="flex items-center gap-2">
           <ScalerLogo className="h-6 w-auto text-text" />
           <span className="hidden font-display text-xl leading-none sm:inline">Interview Vault</span>
+          <span className="relative hidden h-2 w-2 sm:inline-flex" title="Live">
+            <span className="absolute inline-flex h-full w-full animate-ping rounded-full bg-red-500 opacity-75" />
+            <span className="relative inline-flex h-2 w-2 rounded-full bg-red-500" />
+          </span>
         </Link>
         {email && (
           <nav className="flex items-center gap-1 overflow-x-auto">

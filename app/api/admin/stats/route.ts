@@ -25,7 +25,7 @@ export async function GET(req: Request) {
     since = new Date(`${from}T00:00:00.000Z`).toISOString();
     until = new Date(`${to || from}T23:59:59.999Z`).toISOString();
   } else {
-    const days = range === "day" ? 1 : range === "month" ? 30 : 7;
+    const days = range === "day" ? 1 : range === "15d" ? 15 : range === "month" ? 30 : 7;
     since = new Date(Date.now() - days * 86400_000).toISOString();
   }
 

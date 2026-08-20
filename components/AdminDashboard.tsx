@@ -1,6 +1,6 @@
 "use client";
 import { useEffect, useMemo, useState } from "react";
-import { BarChart, Bar, XAxis, YAxis, Tooltip, ResponsiveContainer, LineChart, Line, CartesianGrid } from "recharts";
+import { BarChart, Bar, XAxis, YAxis, Tooltip, ResponsiveContainer, LineChart, Line, CartesianGrid, Legend } from "recharts";
 import { FlightSpinner } from "./FlightLoader";
 import PacketLinksManager from "./PacketLinksManager";
 import AssignmentsManager from "./AssignmentsManager";
@@ -19,6 +19,7 @@ type Stats = {
 const RANGES = [
   { k: "day",   label: "24h" },
   { k: "week",  label: "7d"  },
+  { k: "15d",   label: "15d" },
   { k: "month", label: "30d" },
 ];
 
@@ -48,8 +49,161 @@ function downloadCsv(filename: string, rows: (string | number)[][]) {
   URL.revokeObjectURL(url);
 }
 
+// Pure builders so the same grouping logic can run both against the live
+// on-screen `data` (via useMemo below) and against a one-off fetch scoped to
+// whatever date window an "Export CSV" button asks for — the two paths must
+// never drift apart.
+function buildCompanyRoleBreakdown(views: Stats["views"]) {
+  const m = new Map<string, { email: string; program: string; company: string; role: string; views: number; first: string; last: string }>();
+  views.forEach(v => {
+    if (!v.company || !v.role) return;
+    const company = v.company.trim(), role = v.role.trim(), program = v.program?.trim() || "—";
+    const k = `${v.user_email}|${program}|${company}|${role}`;
+    const e = m.get(k) || { email: v.user_email, program, company, role, views: 0, first: v.created_at, last: v.created_at };
+    e.views++;
+    if (v.created_at < e.first) e.first = v.created_at;
+    if (v.created_at > e.last) e.last = v.created_at;
+    m.set(k, e);
+  });
+  return Array.from(m.values()).sort((a, b) => b.last.localeCompare(a.last));
+}
+function buildPacketByEmail(packetViews: Stats["packetViews"]) {
+  const m = new Map<string, { email: string; packet: string; count: number; first: string; last: string }>();
+  packetViews.forEach(v => {
+    const packet = `${v.role || "—"} · ${v.yoe || "—"}`;
+    const k = `${v.user_email}|${packet}`;
+    const e = m.get(k) || { email: v.user_email, packet, count: 0, first: v.created_at, last: v.created_at };
+    e.count++;
+    if (v.created_at < e.first) e.first = v.created_at;
+    if (v.created_at > e.last) e.last = v.created_at;
+    m.set(k, e);
+  });
+  return Array.from(m.values()).sort((a, b) => b.last.localeCompare(a.last));
+}
+function buildAssignmentByEmail(assignmentViews: Stats["assignmentViews"]) {
+  const m = new Map<string, { email: string; assignment: string; count: number; first: string; last: string }>();
+  assignmentViews.forEach(v => {
+    const assignment = `${v.company || "—"} — ${v.role || "—"}${v.round ? ` · ${v.round}` : ""}`;
+    const k = `${v.user_email}|${assignment}`;
+    const e = m.get(k) || { email: v.user_email, assignment, count: 0, first: v.created_at, last: v.created_at };
+    e.count++;
+    if (v.created_at < e.first) e.first = v.created_at;
+    if (v.created_at > e.last) e.last = v.created_at;
+    m.set(k, e);
+  });
+  return Array.from(m.values()).sort((a, b) => b.last.localeCompare(a.last));
+}
+function buildVideoByEmail(videoViews: Stats["videoViews"]) {
+  const m = new Map<string, { email: string; video: string; count: number; first: string; last: string }>();
+  videoViews.forEach(v => {
+    const video = `${v.topic || "—"} (${v.role || "—"} · ${v.yoe || "—"})`;
+    const k = `${v.user_email}|${video}`;
+    const e = m.get(k) || { email: v.user_email, video, count: 0, first: v.created_at, last: v.created_at };
+    e.count++;
+    if (v.created_at < e.first) e.first = v.created_at;
+    if (v.created_at > e.last) e.last = v.created_at;
+    m.set(k, e);
+  });
+  return Array.from(m.values()).sort((a, b) => b.last.localeCompare(a.last));
+}
+function buildPerUser(views: Stats["views"], sessions: Stats["sessions"]) {
+  const m = new Map<string, { views: number; minutes: number; last: string }>();
+  views.forEach(v => {
+    const e = m.get(v.user_email) || { views: 0, minutes: 0, last: v.created_at };
+    e.views++;
+    if (v.created_at > e.last) e.last = v.created_at;
+    m.set(v.user_email, e);
+  });
+  sessions.forEach(s => {
+    const e = m.get(s.user_email) || { views: 0, minutes: 0, last: s.started_at };
+    e.minutes += (s.duration_sec || 0) / 60;
+    if (s.started_at > e.last) e.last = s.started_at;
+    m.set(s.user_email, e);
+  });
+  return Array.from(m.entries())
+    .map(([email, e]) => ({ email, views: e.views, minutes: Math.round(e.minutes), last: e.last }))
+    .sort((a, b) => b.views - a.views);
+}
+function buildPacketPerUser(packetViews: Stats["packetViews"]) {
+  const m = new Map<string, { packetsRead: number; first: string; last: string }>();
+  packetViews.forEach(v => {
+    const e = m.get(v.user_email) || { packetsRead: 0, first: v.created_at, last: v.created_at };
+    e.packetsRead++;
+    if (v.created_at < e.first) e.first = v.created_at;
+    if (v.created_at > e.last) e.last = v.created_at;
+    m.set(v.user_email, e);
+  });
+  return Array.from(m.entries()).map(([email, e]) => ({ email, ...e })).sort((a, b) => b.packetsRead - a.packetsRead);
+}
+
+async function fetchStatsWindow(from: string, to: string): Promise<Stats | null> {
+  const params = new URLSearchParams({ range: "custom", from, to });
+  const res = await fetch(`/api/admin/stats?${params.toString()}`);
+  const j = await res.json().catch(() => ({ ok: false }));
+  return j.ok ? j : null;
+}
+
+// "Export CSV" button that first asks which date window to export, instead
+// of silently reusing whatever range the dashboard happens to be showing —
+// it re-fetches scoped to exactly that window so the file is self-contained.
+function ExportButton({
+  defaultFrom, defaultTo, onExport, label = "Export CSV", className,
+}: {
+  defaultFrom: string; defaultTo: string;
+  onExport: (from: string, to: string) => Promise<void>;
+  label?: string;
+  className?: string;
+}) {
+  const [open, setOpen] = useState(false);
+  const [from, setFrom] = useState(defaultFrom);
+  const [to, setTo]     = useState(defaultTo);
+  const [busy, setBusy] = useState(false);
+
+  useEffect(() => { setFrom(defaultFrom); setTo(defaultTo); }, [defaultFrom, defaultTo]);
+
+  const go = async () => {
+    setBusy(true);
+    await onExport(from, to);
+    setBusy(false);
+    setOpen(false);
+  };
+
+  return (
+    <div className="relative">
+      <button
+        onClick={() => setOpen(o => !o)}
+        className={className || "rounded-xl border border-edge px-3 py-2 text-sm text-mute hover:text-text"}
+      >{label}</button>
+      {open && (
+        <div className="absolute right-0 z-20 mt-2 w-72 rounded-xl border border-edge bg-panel p-3 shadow-cardH">
+          <div className="mb-2 text-xs text-mute">Pick the date window to export</div>
+          <div className="mb-3 flex items-center gap-1.5">
+            <input
+              type="date" value={from} max={to}
+              onChange={e => setFrom(e.target.value)}
+              className="min-w-0 flex-1 rounded-md border border-edge bg-panel2 px-1.5 py-1 text-sm text-text [color-scheme:inherit]"
+            />
+            <span className="text-mute">→</span>
+            <input
+              type="date" value={to} min={from} max={todayStr()}
+              onChange={e => setTo(e.target.value)}
+              className="min-w-0 flex-1 rounded-md border border-edge bg-panel2 px-1.5 py-1 text-sm text-text [color-scheme:inherit]"
+            />
+          </div>
+          <div className="flex justify-end gap-2">
+            <button onClick={() => setOpen(false)} className="rounded-lg px-2.5 py-1 text-xs text-mute hover:text-text">Cancel</button>
+            <button onClick={go} disabled={busy} className="rounded-lg bg-text px-3 py-1 text-xs font-medium text-ink disabled:opacity-50">
+              {busy ? "Exporting…" : "Download"}
+            </button>
+          </div>
+        </div>
+      )}
+    </div>
+  );
+}
+
 export default function AdminDashboard({ me }: { me: string }) {
-  const [range, setRange] = useState<"day" | "week" | "month" | "custom">("week");
+  const [range, setRange] = useState<"day" | "week" | "15d" | "month" | "custom">("week");
   const [customFrom, setCustomFrom] = useState(daysAgoStr(7));
   const [customTo, setCustomTo]     = useState(todayStr());
   const [data, setData]   = useState<Stats | null>(null);
@@ -78,15 +232,6 @@ export default function AdminDashboard({ me }: { me: string }) {
     else setRange("custom");
   };
 
-  // The exact date window each CSV export actually covers — mirrors the
-  // since/until resolution in /api/admin/stats so the filename is a truthful
-  // record of what's inside, not just the vague "week"/"month" label.
-  const rangeFileTag = useMemo(() => {
-    const to = range === "custom" ? customTo : todayStr();
-    const from = range === "custom" ? customFrom : daysAgoStr(range === "day" ? 1 : range === "month" ? 30 : 7);
-    return `${from}_to_${to}`;
-  }, [range, customFrom, customTo]);
-
   const uniqueUsers = useMemo(() => {
     if (!data) return 0;
     return new Set(data.sessions.map(s => s.user_email).concat(data.views.map(v => v.user_email))).size;
@@ -94,6 +239,7 @@ export default function AdminDashboard({ me }: { me: string }) {
 
   const bucketDays = useMemo(() => {
     if (range === "day") return 1;
+    if (range === "15d") return 15;
     if (range === "month") return 30;
     if (range === "custom") {
       const ms = new Date(`${customTo}T00:00:00Z`).getTime() - new Date(`${customFrom}T00:00:00Z`).getTime();
@@ -102,86 +248,51 @@ export default function AdminDashboard({ me }: { me: string }) {
     return 7;
   }, [range, customFrom, customTo]);
 
-  const dailyBuckets = useMemo(() => {
+  // One bucket per day, three independent activity signals so each graph
+  // answers a single unambiguous question instead of one chart with a vague
+  // "views"/"users" pair nobody can interpret without reading the code:
+  //   - activeUsers: opened the site at all (a session exists that day)
+  //   - searchedUsers: narrowed the Questions/Assignments filters to a company+role
+  //   - packetUsers / videoUsers: actually read a packet / watched a video that day
+  const activityBuckets = useMemo(() => {
     if (!data) return [];
     const end = range === "custom" ? new Date(`${customTo}T00:00:00Z`) : new Date();
-    const map = new Map<string, { day: string; views: number; users: Set<string>; minutes: number }>();
+    const map = new Map<string, { day: string; active: Set<string>; searched: Set<string>; packets: Set<string>; videos: Set<string> }>();
     for (let i = bucketDays - 1; i >= 0; i--) {
       const d = new Date(end.getTime() - i * 86400_000);
       const k = d.toISOString().slice(0, 10);
-      map.set(k, { day: k.slice(5), views: 0, users: new Set(), minutes: 0 });
+      map.set(k, { day: k.slice(5), active: new Set(), searched: new Set(), packets: new Set(), videos: new Set() });
     }
-    data.views.forEach(v => {
-      const k = v.created_at.slice(0, 10);
-      const b = map.get(k); if (b) { b.views++; b.users.add(v.user_email); }
-    });
-    data.sessions.forEach(s => {
-      const k = s.started_at.slice(0, 10);
-      const b = map.get(k); if (b) { b.minutes += (s.duration_sec || 0) / 60; b.users.add(s.user_email); }
-    });
-    return Array.from(map.values()).map(b => ({ day: b.day, views: b.views, users: b.users.size, minutes: Math.round(b.minutes) }));
+    data.sessions.forEach(s => { map.get(s.started_at.slice(0, 10))?.active.add(s.user_email); });
+    data.views.forEach(v => { map.get(v.created_at.slice(0, 10))?.searched.add(v.user_email); });
+    data.packetViews.forEach(v => { map.get(v.created_at.slice(0, 10))?.packets.add(v.user_email); });
+    data.videoViews.forEach(v => { map.get(v.created_at.slice(0, 10))?.videos.add(v.user_email); });
+    return Array.from(map.values()).map(b => ({
+      day: b.day,
+      activeUsers: b.active.size,
+      searchedUsers: b.searched.size,
+      packetUsers: b.packets.size,
+      videoUsers: b.videos.size,
+    }));
   }, [data, bucketDays, range, customTo]);
 
   // Grain is (email, program, company, role) so you can see *who* read what, not just totals.
+  const companyRoleBreakdownAll = useMemo(() => data ? buildCompanyRoleBreakdown(data.views) : [], [data]);
   const companyRoleBreakdown = useMemo(() => {
-    if (!data) return [];
-    const m = new Map<string, { email: string; program: string; company: string; role: string; views: number; first: string; last: string }>();
-    data.views.forEach(v => {
-      if (!v.company || !v.role) return;
-      const company = v.company.trim(), role = v.role.trim(), program = v.program?.trim() || "—";
-      const k = `${v.user_email}|${program}|${company}|${role}`;
-      const e = m.get(k) || { email: v.user_email, program, company, role, views: 0, first: v.created_at, last: v.created_at };
-      e.views++;
-      if (v.created_at < e.first) e.first = v.created_at;
-      if (v.created_at > e.last) e.last = v.created_at;
-      m.set(k, e);
-    });
-    const rows = Array.from(m.values()).sort((a, b) => b.last.localeCompare(a.last));
     const qL = breakdownQuery.trim().toLowerCase();
-    if (!qL) return rows;
-    return rows.filter(r =>
+    if (!qL) return companyRoleBreakdownAll;
+    return companyRoleBreakdownAll.filter(r =>
       r.email.toLowerCase().includes(qL) ||
       r.company.toLowerCase().includes(qL) ||
       r.role.toLowerCase().includes(qL) ||
       r.program.toLowerCase().includes(qL)
     );
-  }, [data, breakdownQuery]);
+  }, [companyRoleBreakdownAll, breakdownQuery]);
 
-  const perUser = useMemo(() => {
-    if (!data) return [];
-    const m = new Map<string, { views: number; minutes: number; last: string }>();
-    data.views.forEach(v => {
-      const e = m.get(v.user_email) || { views: 0, minutes: 0, last: v.created_at };
-      e.views++;
-      if (v.created_at > e.last) e.last = v.created_at;
-      m.set(v.user_email, e);
-    });
-    data.sessions.forEach(s => {
-      const e = m.get(s.user_email) || { views: 0, minutes: 0, last: s.started_at };
-      e.minutes += (s.duration_sec || 0) / 60;
-      if (s.started_at > e.last) e.last = s.started_at;
-      m.set(s.user_email, e);
-    });
-    return Array.from(m.entries())
-      .map(([email, e]) => ({ email, views: e.views, minutes: Math.round(e.minutes), last: e.last }))
-      .sort((a, b) => b.views - a.views);
-  }, [data]);
+  const perUser = useMemo(() => data ? buildPerUser(data.views, data.sessions) : [], [data]);
 
   // Email-level totals, used for the CSV summary export.
-  const packetPerUser = useMemo(() => {
-    if (!data) return [];
-    const m = new Map<string, { packetsRead: number; first: string; last: string }>();
-    data.packetViews.forEach(v => {
-      const e = m.get(v.user_email) || { packetsRead: 0, first: v.created_at, last: v.created_at };
-      e.packetsRead++;
-      if (v.created_at < e.first) e.first = v.created_at;
-      if (v.created_at > e.last) e.last = v.created_at;
-      m.set(v.user_email, e);
-    });
-    return Array.from(m.entries())
-      .map(([email, e]) => ({ email, ...e }))
-      .sort((a, b) => b.packetsRead - a.packetsRead);
-  }, [data]);
+  const packetPerUser = useMemo(() => data ? buildPacketPerUser(data.packetViews) : [], [data]);
 
   // Top 20 for the chart — a bar per unique user gets unreadable past that.
   const packetsByUserChart = useMemo(
@@ -191,62 +302,29 @@ export default function AdminDashboard({ me }: { me: string }) {
 
   // Grain is (email, packet) so it's clear *who* read *which* packet, how many times,
   // and the oldest/most recent read — same shape as the company/role breakdown above.
+  const packetByEmailAll = useMemo(() => data ? buildPacketByEmail(data.packetViews) : [], [data]);
   const packetByEmail = useMemo(() => {
-    if (!data) return [];
-    const m = new Map<string, { email: string; packet: string; count: number; first: string; last: string }>();
-    data.packetViews.forEach(v => {
-      const packet = `${v.role || "—"} · ${v.yoe || "—"}`;
-      const k = `${v.user_email}|${packet}`;
-      const e = m.get(k) || { email: v.user_email, packet, count: 0, first: v.created_at, last: v.created_at };
-      e.count++;
-      if (v.created_at < e.first) e.first = v.created_at;
-      if (v.created_at > e.last) e.last = v.created_at;
-      m.set(k, e);
-    });
-    const rows = Array.from(m.values()).sort((a, b) => b.last.localeCompare(a.last));
     const qL = packetQuery.trim().toLowerCase();
-    if (!qL) return rows;
-    return rows.filter(r => r.email.toLowerCase().includes(qL) || r.packet.toLowerCase().includes(qL));
-  }, [data, packetQuery]);
+    if (!qL) return packetByEmailAll;
+    return packetByEmailAll.filter(r => r.email.toLowerCase().includes(qL) || r.packet.toLowerCase().includes(qL));
+  }, [packetByEmailAll, packetQuery]);
 
   // Same tracking shape as packets: grain is (email, assignment) with
   // first/last/count, so you can see *who* opened *which* assignment link.
+  const assignmentByEmailAll = useMemo(() => data ? buildAssignmentByEmail(data.assignmentViews) : [], [data]);
   const assignmentByEmail = useMemo(() => {
-    if (!data) return [];
-    const m = new Map<string, { email: string; assignment: string; count: number; first: string; last: string }>();
-    data.assignmentViews.forEach(v => {
-      const assignment = `${v.company || "—"} — ${v.role || "—"}${v.round ? ` · ${v.round}` : ""}`;
-      const k = `${v.user_email}|${assignment}`;
-      const e = m.get(k) || { email: v.user_email, assignment, count: 0, first: v.created_at, last: v.created_at };
-      e.count++;
-      if (v.created_at < e.first) e.first = v.created_at;
-      if (v.created_at > e.last) e.last = v.created_at;
-      m.set(k, e);
-    });
-    const rows = Array.from(m.values()).sort((a, b) => b.last.localeCompare(a.last));
     const qL = assignmentQuery.trim().toLowerCase();
-    if (!qL) return rows;
-    return rows.filter(r => r.email.toLowerCase().includes(qL) || r.assignment.toLowerCase().includes(qL));
-  }, [data, assignmentQuery]);
+    if (!qL) return assignmentByEmailAll;
+    return assignmentByEmailAll.filter(r => r.email.toLowerCase().includes(qL) || r.assignment.toLowerCase().includes(qL));
+  }, [assignmentByEmailAll, assignmentQuery]);
 
   // Same shape again: grain is (email, video) with first/last/count.
+  const videoByEmailAll = useMemo(() => data ? buildVideoByEmail(data.videoViews) : [], [data]);
   const videoByEmail = useMemo(() => {
-    if (!data) return [];
-    const m = new Map<string, { email: string; video: string; count: number; first: string; last: string }>();
-    data.videoViews.forEach(v => {
-      const video = `${v.topic || "—"} (${v.role || "—"} · ${v.yoe || "—"})`;
-      const k = `${v.user_email}|${video}`;
-      const e = m.get(k) || { email: v.user_email, video, count: 0, first: v.created_at, last: v.created_at };
-      e.count++;
-      if (v.created_at < e.first) e.first = v.created_at;
-      if (v.created_at > e.last) e.last = v.created_at;
-      m.set(k, e);
-    });
-    const rows = Array.from(m.values()).sort((a, b) => b.last.localeCompare(a.last));
     const qL = videoQuery.trim().toLowerCase();
-    if (!qL) return rows;
-    return rows.filter(r => r.email.toLowerCase().includes(qL) || r.video.toLowerCase().includes(qL));
-  }, [data, videoQuery]);
+    if (!qL) return videoByEmailAll;
+    return videoByEmailAll.filter(r => r.email.toLowerCase().includes(qL) || r.video.toLowerCase().includes(qL));
+  }, [videoByEmailAll, videoQuery]);
 
   const addAdmin = async () => {
     if (!newAdmin.includes("@")) return;
@@ -276,11 +354,18 @@ export default function AdminDashboard({ me }: { me: string }) {
       : (j.error || "Couldn't trigger the refresh."));
   };
 
-  const exportCsv = () => {
-    const emails = new Set<string>([...perUser.map(u => u.email), ...packetPerUser.map(u => u.email)]);
+  // Every export re-fetches scoped to whatever window the user picks in the
+  // ExportButton popover — independent of whatever range the dashboard is
+  // currently showing, so the file always matches the window you asked for.
+  const exportCsv = async (from: string, to: string) => {
+    const d = await fetchStatsWindow(from, to);
+    if (!d) { alert("Couldn't load data for that range."); return; }
+    const perU = buildPerUser(d.views, d.sessions);
+    const packetU = buildPacketPerUser(d.packetViews);
+    const emails = new Set<string>([...perU.map(u => u.email), ...packetU.map(u => u.email)]);
     const byEmail = Array.from(emails).map(email => {
-      const u = perUser.find(x => x.email === email);
-      const p = packetPerUser.find(x => x.email === email);
+      const u = perU.find(x => x.email === email);
+      const p = packetU.find(x => x.email === email);
       const last = [u?.last, p?.last].filter(Boolean).sort().pop();
       return {
         email,
@@ -295,51 +380,59 @@ export default function AdminDashboard({ me }: { me: string }) {
       ["Email", "Views", "Minutes", "Packets Read", "Last Activity"],
       ...byEmail.map(u => [u.email, u.views, u.minutes, u.packetsRead, u.last]),
     ];
-    downloadCsv(`admin-usage-${rangeFileTag}.csv`, rows);
+    downloadCsv(`admin-usage-${from}_to_${to}.csv`, rows);
   };
 
-  const exportCompanyBreakdownCsv = () => {
+  const exportCompanyBreakdownCsv = async (from: string, to: string) => {
+    const d = await fetchStatsWindow(from, to);
+    if (!d) { alert("Couldn't load data for that range."); return; }
     const rows: (string | number)[][] = [
       ["Program", "Company", "Role", "Email", "First time date", "Last time date", "Count"],
-      ...companyRoleBreakdown.map(r => [
+      ...buildCompanyRoleBreakdown(d.views).map(r => [
         r.program, r.company, r.role, r.email,
         new Date(r.first).toLocaleString(), new Date(r.last).toLocaleString(), r.views,
       ]),
     ];
-    downloadCsv(`admin-company-role-breakdown-${rangeFileTag}.csv`, rows);
+    downloadCsv(`admin-company-role-breakdown-${from}_to_${to}.csv`, rows);
   };
 
-  const exportPacketBreakdownCsv = () => {
+  const exportPacketBreakdownCsv = async (from: string, to: string) => {
+    const d = await fetchStatsWindow(from, to);
+    if (!d) { alert("Couldn't load data for that range."); return; }
     const rows: (string | number)[][] = [
       ["Packet", "Email", "First time date", "Last time date", "Count"],
-      ...packetByEmail.map(r => [
+      ...buildPacketByEmail(d.packetViews).map(r => [
         r.packet, r.email,
         new Date(r.first).toLocaleString(), new Date(r.last).toLocaleString(), r.count,
       ]),
     ];
-    downloadCsv(`admin-packet-breakdown-${rangeFileTag}.csv`, rows);
+    downloadCsv(`admin-packet-breakdown-${from}_to_${to}.csv`, rows);
   };
 
-  const exportAssignmentBreakdownCsv = () => {
+  const exportAssignmentBreakdownCsv = async (from: string, to: string) => {
+    const d = await fetchStatsWindow(from, to);
+    if (!d) { alert("Couldn't load data for that range."); return; }
     const rows: (string | number)[][] = [
       ["Assignment", "Email", "First time date", "Last time date", "Count"],
-      ...assignmentByEmail.map(r => [
+      ...buildAssignmentByEmail(d.assignmentViews).map(r => [
         r.assignment, r.email,
         new Date(r.first).toLocaleString(), new Date(r.last).toLocaleString(), r.count,
       ]),
     ];
-    downloadCsv(`admin-assignment-breakdown-${rangeFileTag}.csv`, rows);
+    downloadCsv(`admin-assignment-breakdown-${from}_to_${to}.csv`, rows);
   };
 
-  const exportVideoBreakdownCsv = () => {
+  const exportVideoBreakdownCsv = async (from: string, to: string) => {
+    const d = await fetchStatsWindow(from, to);
+    if (!d) { alert("Couldn't load data for that range."); return; }
     const rows: (string | number)[][] = [
       ["Video", "Email", "First time date", "Last time date", "Count"],
-      ...videoByEmail.map(r => [
+      ...buildVideoByEmail(d.videoViews).map(r => [
         r.video, r.email,
         new Date(r.first).toLocaleString(), new Date(r.last).toLocaleString(), r.count,
       ]),
     ];
-    downloadCsv(`admin-video-breakdown-${rangeFileTag}.csv`, rows);
+    downloadCsv(`admin-video-breakdown-${from}_to_${to}.csv`, rows);
   };
 
   return (
@@ -375,10 +468,11 @@ export default function AdminDashboard({ me }: { me: string }) {
               className={`ml-1 rounded-full border px-3 py-1 text-sm transition ${range === "custom" ? "border-text bg-text text-ink" : "border-edge text-mute hover:text-text"}`}
             >Go</button>
           </div>
-          <button
-            onClick={exportCsv}
+          <ExportButton
+            defaultFrom={customFrom} defaultTo={customTo} onExport={exportCsv}
+            label="Download CSV"
             className="rounded-full bg-text px-3.5 py-1.5 text-sm font-medium text-ink transition hover:opacity-90"
-          >Download CSV</button>
+          />
         </div>
       </section>
 
@@ -391,26 +485,51 @@ export default function AdminDashboard({ me }: { me: string }) {
       </section>
 
       <section className="grid grid-cols-1 gap-4 lg:grid-cols-2">
-        <Card title="Daily views & users" accent="acad">
-          <ResponsiveContainer width="100%" height={240}>
-            <LineChart data={dailyBuckets}>
+        <Card title="Daily active users — opened the site" accent="acad">
+          <ResponsiveContainer width="100%" height={220}>
+            <LineChart data={activityBuckets}>
               <CartesianGrid stroke="rgb(var(--edge))" vertical={false} />
               <XAxis dataKey="day" stroke="rgb(var(--mute))" fontSize={11} />
-              <YAxis stroke="rgb(var(--mute))" fontSize={11} />
+              <YAxis stroke="rgb(var(--mute))" fontSize={11} allowDecimals={false} />
               <Tooltip contentStyle={{ background: "rgb(var(--panel))", border: "1px solid rgb(var(--edge))", borderRadius: 8, color: "rgb(var(--text))" }} />
-              <Line type="monotone" dataKey="views" stroke="rgb(var(--acad))" strokeWidth={2} dot={false} />
-              <Line type="monotone" dataKey="users" stroke="rgb(var(--dsml))" strokeWidth={2} dot={false} />
+              <Line type="monotone" dataKey="activeUsers" name="Active users" stroke="rgb(var(--acad))" strokeWidth={2} dot={false} />
             </LineChart>
           </ResponsiveContainer>
         </Card>
-        <Card title="Packets opened — by unique user (top 20)" accent="aiml">
-          <ResponsiveContainer width="100%" height={240}>
+        <Card title="Daily searches — company & role" accent="dsml">
+          <p className="mb-2 text-xs text-mute">Learners who narrowed the filters to at least one specific company & role that day.</p>
+          <ResponsiveContainer width="100%" height={220}>
+            <LineChart data={activityBuckets}>
+              <CartesianGrid stroke="rgb(var(--edge))" vertical={false} />
+              <XAxis dataKey="day" stroke="rgb(var(--mute))" fontSize={11} />
+              <YAxis stroke="rgb(var(--mute))" fontSize={11} allowDecimals={false} />
+              <Tooltip contentStyle={{ background: "rgb(var(--panel))", border: "1px solid rgb(var(--edge))", borderRadius: 8, color: "rgb(var(--text))" }} />
+              <Line type="monotone" dataKey="searchedUsers" name="Searched users" stroke="rgb(var(--dsml))" strokeWidth={2} dot={false} />
+            </LineChart>
+          </ResponsiveContainer>
+        </Card>
+        <Card title="Daily content engagement" accent="aiml">
+          <p className="mb-2 text-xs text-mute">Learners who read at least one packet, or watched at least one video resource, that day.</p>
+          <ResponsiveContainer width="100%" height={220}>
+            <LineChart data={activityBuckets}>
+              <CartesianGrid stroke="rgb(var(--edge))" vertical={false} />
+              <XAxis dataKey="day" stroke="rgb(var(--mute))" fontSize={11} />
+              <YAxis stroke="rgb(var(--mute))" fontSize={11} allowDecimals={false} />
+              <Tooltip contentStyle={{ background: "rgb(var(--panel))", border: "1px solid rgb(var(--edge))", borderRadius: 8, color: "rgb(var(--text))" }} />
+              <Legend wrapperStyle={{ fontSize: 12 }} />
+              <Line type="monotone" dataKey="packetUsers" name="Read a packet" stroke="rgb(var(--aiml))" strokeWidth={2} dot={false} />
+              <Line type="monotone" dataKey="videoUsers" name="Watched a video" stroke="rgb(var(--devops))" strokeWidth={2} dot={false} />
+            </LineChart>
+          </ResponsiveContainer>
+        </Card>
+        <Card title="Packets opened — by unique user (top 20)" accent="devops">
+          <ResponsiveContainer width="100%" height={220}>
             <BarChart data={packetsByUserChart}>
               <CartesianGrid stroke="rgb(var(--edge))" vertical={false} />
               <XAxis dataKey="email" stroke="rgb(var(--mute))" fontSize={10} angle={-35} textAnchor="end" interval={0} height={60} />
               <YAxis stroke="rgb(var(--mute))" fontSize={11} allowDecimals={false} />
               <Tooltip contentStyle={{ background: "rgb(var(--panel))", border: "1px solid rgb(var(--edge))", borderRadius: 8, color: "rgb(var(--text))" }} />
-              <Bar dataKey="packetsRead" fill="rgb(var(--aiml))" radius={[6,6,0,0]} />
+              <Bar dataKey="packetsRead" fill="rgb(var(--devops))" radius={[6,6,0,0]} />
             </BarChart>
           </ResponsiveContainer>
           {packetsByUserChart.length === 0 && (
@@ -429,10 +548,7 @@ export default function AdminDashboard({ me }: { me: string }) {
             placeholder="filter by email, company, role, or program..."
             className="min-w-[220px] flex-1 rounded-xl border border-edge bg-panel2 px-3 py-2 text-sm text-text placeholder:text-mute/60 focus:border-acad focus:outline-none"
           />
-          <button
-            onClick={exportCompanyBreakdownCsv}
-            className="rounded-xl border border-edge px-3 py-2 text-sm text-mute hover:text-text"
-          >Export CSV</button>
+          <ExportButton defaultFrom={customFrom} defaultTo={customTo} onExport={exportCompanyBreakdownCsv} />
         </div>
         <div className="max-h-[420px] overflow-y-auto">
           <table className="w-full text-sm">
@@ -495,10 +611,7 @@ export default function AdminDashboard({ me }: { me: string }) {
             placeholder="filter by email or packet..."
             className="min-w-[220px] flex-1 rounded-xl border border-edge bg-panel2 px-3 py-2 text-sm text-text placeholder:text-mute/60 focus:border-acad focus:outline-none"
           />
-          <button
-            onClick={exportPacketBreakdownCsv}
-            className="rounded-xl border border-edge px-3 py-2 text-sm text-mute hover:text-text"
-          >Export CSV</button>
+          <ExportButton defaultFrom={customFrom} defaultTo={customTo} onExport={exportPacketBreakdownCsv} />
         </div>
         <div className="max-h-[420px] overflow-y-auto">
           <table className="w-full text-sm">
@@ -537,10 +650,7 @@ export default function AdminDashboard({ me }: { me: string }) {
             placeholder="filter by email, company, or role..."
             className="min-w-[220px] flex-1 rounded-xl border border-edge bg-panel2 px-3 py-2 text-sm text-text placeholder:text-mute/60 focus:border-acad focus:outline-none"
           />
-          <button
-            onClick={exportAssignmentBreakdownCsv}
-            className="rounded-xl border border-edge px-3 py-2 text-sm text-mute hover:text-text"
-          >Export CSV</button>
+          <ExportButton defaultFrom={customFrom} defaultTo={customTo} onExport={exportAssignmentBreakdownCsv} />
         </div>
         <div className="max-h-[420px] overflow-y-auto">
           <table className="w-full text-sm">
@@ -579,10 +689,7 @@ export default function AdminDashboard({ me }: { me: string }) {
             placeholder="filter by email or topic..."
             className="min-w-[220px] flex-1 rounded-xl border border-edge bg-panel2 px-3 py-2 text-sm text-text placeholder:text-mute/60 focus:border-acad focus:outline-none"
           />
-          <button
-            onClick={exportVideoBreakdownCsv}
-            className="rounded-xl border border-edge px-3 py-2 text-sm text-mute hover:text-text"
-          >Export CSV</button>
+          <ExportButton defaultFrom={customFrom} defaultTo={customTo} onExport={exportVideoBreakdownCsv} />
         </div>
         <div className="max-h-[420px] overflow-y-auto">
           <table className="w-full text-sm">
