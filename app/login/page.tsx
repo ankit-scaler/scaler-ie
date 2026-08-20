@@ -3,6 +3,28 @@ import { useSearchParams } from "next/navigation";
 import { supabaseBrowser } from "@/lib/supabase-browser";
 import ScalerLogo from "@/components/ScalerLogo";
 
+const HIRING_PARTNERS = [
+  "Google", "Amazon", "Salesforce", "Fractal.ai", "Sarvam.ai", "Citibank",
+  "Razorpay", "Deloitte", "Flipkart", "Pine Labs", "Media.net", "Freecharge",
+  "NTT Data", "Techmojo", "Kotak Mahindra Bank", "Thinkify Labs", "Lenskart", "Ethara.AI",
+];
+
+function LogoMarquee() {
+  return (
+    <div className="relative mx-auto mb-6 w-full max-w-3xl overflow-hidden rounded-2xl border border-edge bg-panel py-5 shadow-card">
+      <div className="pointer-events-none absolute inset-y-0 left-0 z-10 w-16 bg-gradient-to-r from-panel to-transparent" />
+      <div className="pointer-events-none absolute inset-y-0 right-0 z-10 w-16 bg-gradient-to-l from-panel to-transparent" />
+      <div className="flex w-max animate-marquee items-center gap-12 whitespace-nowrap">
+        {[...HIRING_PARTNERS, ...HIRING_PARTNERS].map((name, i) => (
+          <span key={i} className="font-display text-lg tracking-wide text-mute/80">
+            {name}
+          </span>
+        ))}
+      </div>
+    </div>
+  );
+}
+
 export default function LoginPage() {
   const params = useSearchParams();
   const next = params.get("next");
@@ -18,26 +40,31 @@ export default function LoginPage() {
     });
   };
   return (
-    <div className="mx-auto flex min-h-[70vh] max-w-md flex-col items-center justify-center text-center">
-      <ScalerLogo className="mb-8 h-7 w-auto text-text" />
-      <h1 className="mb-3 font-display text-4xl leading-tight">
-        Real questions.<br />From real Scaler learners.
-      </h1>
-      <p className="mb-8 text-mute">Sign in with Google to browse the vault.</p>
-      {notAllowed && (
-        <div className="mb-6 max-w-sm rounded-xl border border-devops/40 bg-devops/10 px-4 py-3 text-sm text-devops">
-          This Google account isn&apos;t on the Scaler learner list, so it can&apos;t sign in here.
-          If this looks wrong, reach out to <span className="font-medium">ankit.mishra@scaler.com</span>.
-        </div>
-      )}
-      <button
-        onClick={signIn}
-        className="inline-flex items-center gap-3 rounded-xl bg-text px-5 py-3 text-sm font-medium text-ink shadow-card transition hover:shadow-cardH"
-      >
-        <svg width="18" height="18" viewBox="0 0 48 48"><path fill="#EA4335" d="M24 9.5c3.9 0 7.4 1.4 10.1 3.6l7.5-7.5C36.7 1.6 30.7-1 24-1 14.6-1 6.5 4.4 2.7 12.3l8.7 6.7C13.4 13.1 18.2 9.5 24 9.5z"/><path fill="#4285F4" d="M46.5 24.5c0-1.5-.1-3-.4-4.5H24v9h12.7c-.6 3-2.4 5.5-5 7.2l7.7 6c4.5-4.2 7.1-10.3 7.1-17.7z"/><path fill="#FBBC05" d="M11.4 28.9c-.6-1.7-.9-3.5-.9-5.4s.3-3.7.9-5.4l-8.7-6.7C1 15.2 0 19.5 0 24s1 8.8 2.7 12.6l8.7-7.7z"/><path fill="#34A853" d="M24 47c6.7 0 12.3-2.2 16.4-6l-7.7-6c-2.1 1.4-4.9 2.3-8.7 2.3-5.8 0-10.6-3.6-12.6-8.7l-8.7 6.7C6.5 43.6 14.6 47 24 47z"/></svg>
-        Continue with Google
-      </button>
-      <p className="mt-6 font-mono text-[11px] uppercase tracking-widest text-mute">Get Set Prepare</p>
+    <div className="flex min-h-[70vh] flex-col items-center justify-center">
+      <div className="mx-auto flex max-w-md flex-col items-center text-center">
+        <ScalerLogo className="mb-8 h-7 w-auto text-text" />
+        <h1 className="mb-3 font-display text-4xl leading-tight">
+          Real questions.<br />From real Scaler learners.
+        </h1>
+        <p className="mb-8 text-mute">Sign in with Google to browse the vault.</p>
+        {notAllowed && (
+          <div className="mb-6 max-w-sm rounded-xl border border-devops/40 bg-devops/10 px-4 py-3 text-sm text-devops">
+            This Google account isn&apos;t on the Scaler learner list, so it can&apos;t sign in here.
+            If this looks wrong, reach out to <span className="font-medium">ankit.mishra@scaler.com</span>.
+          </div>
+        )}
+        <button
+          onClick={signIn}
+          className="inline-flex items-center gap-3 rounded-xl bg-text px-5 py-3 text-sm font-medium text-ink shadow-card transition hover:shadow-cardH"
+        >
+          <svg width="18" height="18" viewBox="0 0 48 48"><path fill="#EA4335" d="M24 9.5c3.9 0 7.4 1.4 10.1 3.6l7.5-7.5C36.7 1.6 30.7-1 24-1 14.6-1 6.5 4.4 2.7 12.3l8.7 6.7C13.4 13.1 18.2 9.5 24 9.5z"/><path fill="#4285F4" d="M46.5 24.5c0-1.5-.1-3-.4-4.5H24v9h12.7c-.6 3-2.4 5.5-5 7.2l7.7 6c4.5-4.2 7.1-10.3 7.1-17.7z"/><path fill="#FBBC05" d="M11.4 28.9c-.6-1.7-.9-3.5-.9-5.4s.3-3.7.9-5.4l-8.7-6.7C1 15.2 0 19.5 0 24s1 8.8 2.7 12.6l8.7-7.7z"/><path fill="#34A853" d="M24 47c6.7 0 12.3-2.2 16.4-6l-7.7-6c-2.1 1.4-4.9 2.3-8.7 2.3-5.8 0-10.6-3.6-12.6-8.7l-8.7 6.7C6.5 43.6 14.6 47 24 47z"/></svg>
+          Continue with Google
+        </button>
+        <p className="mt-6 font-mono text-[11px] uppercase tracking-widest text-mute">Get Set Prepare</p>
+      </div>
+      <div className="mt-10 w-full">
+        <LogoMarquee />
+      </div>
     </div>
   );
 }
