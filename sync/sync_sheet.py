@@ -16,6 +16,29 @@ CREDS    = json.loads(os.environ["GOOGLE_CREDS_JSON"])
 # checks this table). Optional so this script keeps working if it's unset —
 # just skips that part of the sync rather than erroring the whole job out.
 LEARNERS_SHEET_ID = os.environ.get("LEARNERS_SHEET_ID")
+# Opt-in "hard refresh": also deletes questions/assignments rows whose
+# fingerprint is no longer present in the sheet. Off by default — normal
+# syncs only add/update, never delete, so an admin edit or a manual sheet
+# row removal doesn't silently wipe data. Triggered from Admin -> Hard
+# refresh, or the workflow_dispatch "full_resync" checkbox.
+FULL_RESYNC = os.environ.get("FULL_RESYNC", "").strip().lower() == "true"
+
+def delete_stale(supa, table, kept_fingerprints, only_where_null=None):
+    """Deletes rows in `table` whose fingerprint isn't in kept_fingerprints.
+    Only called under FULL_RESYNC, after a successful fresh read+upsert —
+    never as a first step, so a bad sheet read can't wipe good data.
+    If only_where_null is a column name, rows are only considered when that
+    column IS NULL — e.g. "added_by", so an admin-added assignment (not
+    sourced from the sheet at all) is never swept up in a hard refresh."""
+    q = supa.table(table).select("id,fingerprint")
+    if only_where_null:
+        q = q.is_(only_where_null, "null")
+    existing = q.execute()
+    stale_ids = [r["id"] for r in existing.data if r["fingerprint"] not in kept_fingerprints]
+    for i in range(0, len(stale_ids), 200):
+        supa.table(table).delete().in_("id", stale_ids[i:i+200]).execute()
+    if stale_ids:
+        print(f"{table}: hard refresh removed {len(stale_ids)} stale row(s)")
 
 QUESTION_TABS = {
     "Questions | Academy": {"round_col": "Round"},
@@ -176,7 +199,7 @@ def main():
             relevant= get_col(row, "Is Question Relevant").lower()
             if not (company and role and question): continue
             if relevant in ("false", "no", "0"): continue
-            if len(question.split()) < 5: continue
+            if len(question.split()) < 7: continue
             q_rows.append({
                 "program": program or tab_name.split("|")[-1].strip(),
                 "company": company,
@@ -193,6 +216,8 @@ def main():
 
     for i in range(0, len(q_rows), 500):
         supa.table("questions").upsert(q_rows[i:i+500], on_conflict="fingerprint").execute()
+    if FULL_RESYNC:
+        delete_stale(supa, "questions", {r["fingerprint"] for r in q_rows})
 
     # --- Assignments ---
     try:
@@ -251,12 +276,19 @@ def main():
                     # the fingerprint changes and upsert creates a duplicate row
                     # instead of updating the existing one in place.
                     "fingerprint": fp(program, company, role, rnd),
+                    # explicit None (not omitted): if an admin-added row's
+                    # fingerprint later matches a real sheet posting, the
+                    # sheet takes ownership of it going forward — same
+                    # convention as the learner allow-list sync.
+                    "added_by": None,
                 })
             a_rows = dedupe_by_fp(a_rows)
             n_with_link = sum(1 for r in a_rows if r["link"])
             print(f"unique assignments: {len(a_rows)} ({n_with_link} with a link)")
             for i in range(0, len(a_rows), 500):
                 supa.table("assignments").upsert(a_rows[i:i+500], on_conflict="fingerprint").execute()
+            if FULL_RESYNC:
+                delete_stale(supa, "assignments", {r["fingerprint"] for r in a_rows}, only_where_null="added_by")
     except Exception as e:
         print(f"assignments error: {e}", file=sys.stderr)
 

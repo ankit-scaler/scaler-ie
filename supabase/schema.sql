@@ -26,7 +26,10 @@ create table if not exists assignments (
   round        text,
   link         text,
   fingerprint  text unique not null,
-  synced_at    timestamptz default now()
+  synced_at    timestamptz default now(),
+  -- null = sheet-managed (the nightly sync owns it); an admin email means it
+  -- was added by hand in Admin and a "hard refresh" must never delete it.
+  added_by     text
 );
 create index if not exists idx_a_company_role on assignments (lower(company), lower(role));
 

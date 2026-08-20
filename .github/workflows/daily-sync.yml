@@ -3,6 +3,11 @@ on:
   schedule:
     - cron: '30 17 * * *'   # 17:30 UTC == 23:00 IST
   workflow_dispatch:
+    inputs:
+      full_resync:
+        description: "Hard refresh: also delete questions/assignments no longer in the sheet"
+        type: boolean
+        default: false
 
 jobs:
   sync:
@@ -19,3 +24,4 @@ jobs:
           SUPABASE_URL:         ${{ secrets.SUPABASE_URL }}
           SUPABASE_SERVICE_KEY: ${{ secrets.SUPABASE_SERVICE_KEY }}
           GOOGLE_CREDS_JSON:    ${{ secrets.GOOGLE_CREDS_JSON }}
+          FULL_RESYNC:          ${{ github.event.inputs.full_resync }}

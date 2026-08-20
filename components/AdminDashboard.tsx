@@ -59,6 +59,8 @@ export default function AdminDashboard({ me }: { me: string }) {
   const [packetQuery, setPacketQuery] = useState("");
   const [assignmentQuery, setAssignmentQuery] = useState("");
   const [videoQuery, setVideoQuery] = useState("");
+  const [hardRefreshing, setHardRefreshing] = useState(false);
+  const [hardRefreshMsg, setHardRefreshMsg] = useState<string | null>(null);
 
   const load = async () => {
     setLoading(true);
@@ -256,6 +258,22 @@ export default function AdminDashboard({ me }: { me: string }) {
     if (!confirm(`Remove admin ${email}?`)) return;
     await fetch("/api/admin/add-admin", { method: "POST", headers: {"content-type":"application/json"}, body: JSON.stringify({ email, action: "remove" }) });
     load();
+  };
+
+  const hardRefresh = async () => {
+    if (!confirm(
+      "Hard refresh from Sheets: re-syncs questions and assignments, and deletes any that " +
+      "are no longer in the sheet (assignments added manually here in Admin are never deleted). " +
+      "Runs in GitHub Actions and takes about 2 minutes. Continue?"
+    )) return;
+    setHardRefreshing(true);
+    setHardRefreshMsg(null);
+    const res = await fetch("/api/admin/hard-refresh", { method: "POST" });
+    const j = await res.json().catch(() => ({ ok: false }));
+    setHardRefreshing(false);
+    setHardRefreshMsg(j.ok
+      ? "Triggered — check the Actions tab on GitHub for progress, then reload this page in ~2 minutes."
+      : (j.error || "Couldn't trigger the refresh."));
   };
 
   const exportCsv = () => {
@@ -631,6 +649,24 @@ export default function AdminDashboard({ me }: { me: string }) {
           ))}
         </div>
       </Card>
+
+      <div className="relative overflow-hidden rounded-2xl border border-edge bg-panel p-5 shadow-card">
+        <div className="absolute inset-x-0 top-0 h-[3px] bg-devops" />
+        <div className="mb-1 font-mono text-xs font-bold uppercase tracking-widest text-devops">Hard refresh from Sheets</div>
+        <p className="mb-4 text-sm text-mute">
+          Use after a sanity edit in the sheet. Re-syncs questions and assignments immediately, and
+          removes any that are no longer in the sheet — admin-added assignments are never touched.
+          Runs as a GitHub Actions job and takes about 2 minutes.
+        </p>
+        <button
+          onClick={hardRefresh}
+          disabled={hardRefreshing}
+          className="rounded-xl border border-devops/40 bg-devops/10 px-4 py-2 text-sm font-medium text-devops transition hover:bg-devops/20 disabled:opacity-50"
+        >{hardRefreshing ? "Triggering…" : "Hard refresh from Sheets"}</button>
+        {hardRefreshMsg && (
+          <div className="mt-3 rounded-xl border border-edge/60 bg-panel2 px-3 py-2 text-sm text-mute">{hardRefreshMsg}</div>
+        )}
+      </div>
 
       {loading && (
         <div className="flex flex-col items-center gap-2">

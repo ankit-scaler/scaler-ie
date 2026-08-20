@@ -41,7 +41,7 @@ export async function POST(req: Request) {
     const fingerprint = fp(program, company, role, round);
 
     if (body.action === "create") {
-      const { error } = await admin.from("assignments").insert({ program, company, role, round, link, fingerprint });
+      const { error } = await admin.from("assignments").insert({ program, company, role, round, link, fingerprint, added_by: me });
       if (error) return NextResponse.json({ ok: false, error: error.message }, { status: 400 });
       revalidateTag("assignments");
       return NextResponse.json({ ok: true });
