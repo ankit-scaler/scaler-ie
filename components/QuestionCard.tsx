@@ -31,7 +31,7 @@ export default function QuestionCard({
       animate={{ opacity: 1, y: 0 }}
       transition={{ duration: 0.35, delay: Math.min(index * 0.02, 0.3) }}
       whileHover={{ y: -3 }}
-      className="group relative overflow-hidden rounded-2xl border border-edge bg-panel p-5 shadow-card transition-shadow hover:shadow-cardH"
+      className="group relative flex h-full flex-col overflow-hidden rounded-2xl border border-edge bg-panel p-5 shadow-card transition-shadow hover:shadow-cardH"
     >
       <div className={`absolute inset-x-0 top-0 h-[3px] ${BAR[prog]}`} />
       <div className="mb-3 flex flex-wrap items-center gap-2 text-xs">
@@ -44,8 +44,8 @@ export default function QuestionCard({
       </div>
       <p className="whitespace-pre-wrap break-words text-base leading-relaxed text-text">{q.question}</p>
       {q.related_topic && (
-        <div className="mt-4 flex items-center gap-2 border-t border-edge/60 pt-3 text-sm text-mute">
-          <span className={`font-mono uppercase tracking-widest text-[11px] ${TOPIC_TEXT[prog]}`}>Topic</span>
+        <div className="mt-auto flex items-start gap-2 border-t border-edge/60 pt-3 text-sm text-mute">
+          <span className={`shrink-0 font-mono uppercase tracking-widest text-[11px] ${TOPIC_TEXT[prog]}`}>Topic</span>
           <span className="break-words text-text/80">{q.related_topic}</span>
         </div>
       )}
