@@ -4,56 +4,13 @@ import { useSearchParams } from "next/navigation";
 import { motion } from "framer-motion";
 import { supabaseBrowser } from "@/lib/supabase-browser";
 import ScalerLogo from "@/components/ScalerLogo";
+import InteractiveConfetti from "@/components/InteractiveConfetti";
 
 const fadeUp = (delay: number) => ({
   initial: { opacity: 0, y: 12 },
   animate: { opacity: 1, y: 0 },
   transition: { duration: 0.45, delay, ease: [0.16, 1, 0.3, 1] as const },
 });
-
-// Deterministic (fixed seed) so server and client render the exact same
-// positions — a real Math.random() here would mismatch during hydration.
-function mulberry32(seed: number) {
-  return () => {
-    seed = (seed + 0x6d2b79f5) | 0;
-    let t = Math.imul(seed ^ (seed >>> 15), 1 | seed);
-    t = (t + Math.imul(t ^ (t >>> 7), 61 | t)) ^ t;
-    return ((t ^ (t >>> 14)) >>> 0) / 4294967296;
-  };
-}
-const DOT_BG: Record<string, string> = { acad: "bg-acad", dsml: "bg-dsml", aiml: "bg-aiml", devops: "bg-devops" };
-const DOT_COLORS = Object.keys(DOT_BG);
-
-function buildConfetti(count: number) {
-  const rand = mulberry32(42);
-  return Array.from({ length: count }, () => {
-    const angle = rand() * Math.PI * 2;
-    const edgeBias = Math.sqrt(rand()); // denser toward the edges than dead center
-    const radius = 12 + edgeBias * 68;
-    return {
-      x: Math.min(98, Math.max(2, 50 + Math.cos(angle) * radius)),
-      y: Math.min(96, Math.max(4, 50 + Math.sin(angle) * radius * 0.9)),
-      size: 2 + rand() * 5,
-      color: DOT_COLORS[Math.floor(rand() * DOT_COLORS.length)],
-      opacity: 0.25 + rand() * 0.45,
-    };
-  });
-}
-const CONFETTI = buildConfetti(70);
-
-function ConfettiField() {
-  return (
-    <div className="pointer-events-none absolute inset-0 overflow-hidden">
-      {CONFETTI.map((d, i) => (
-        <span
-          key={i}
-          className={`absolute rounded-full ${DOT_BG[d.color]}`}
-          style={{ left: `${d.x}%`, top: `${d.y}%`, width: d.size, height: d.size, opacity: d.opacity }}
-        />
-      ))}
-    </div>
-  );
-}
 
 const HIRING_PARTNERS = [
   "Google", "Amazon", "Salesforce", "Fractal.ai", "Sarvam.ai", "Citibank",
@@ -95,7 +52,7 @@ export default function LoginPage() {
   };
   return (
     <div className="relative flex min-h-[70vh] flex-col items-center justify-center">
-      <ConfettiField />
+      <InteractiveConfetti />
       <div className="relative mx-auto flex max-w-md flex-col items-center text-center">
         <motion.div {...fadeUp(0)}>
           <ScalerLogo className="mb-8 h-7 w-auto text-text" />
