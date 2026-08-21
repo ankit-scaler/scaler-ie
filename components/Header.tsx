@@ -90,12 +90,19 @@ export default function Header() {
               >{signingOut ? "Signing out…" : "Sign out"}</button>
             </>
           ) : (
-            <Link
-              href="/login"
+            <button
+              onClick={async () => {
+                const callback = new URL("/auth/callback", location.origin);
+                if (path && path !== "/login") callback.searchParams.set("next", path);
+                await sb.auth.signInWithOAuth({
+                  provider: "google",
+                  options: { redirectTo: callback.toString() },
+                });
+              }}
               className="rounded-full bg-text px-3 py-1.5 text-sm font-medium text-ink transition-transform active:scale-95 hover:opacity-90"
             >
               Sign in
-            </Link>
+            </button>
           )}
         </div>
       </div>
