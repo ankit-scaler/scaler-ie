@@ -1,9 +1,11 @@
 """
-Daily sync: Google Sheet -> Supabase.
+Daily sync: Google Sheet <-> Supabase.
 Reads 4 Question tabs + Assignments tab, dedupes, upserts by fingerprint.
+Also writes tracking-insights snapshots (the same breakdowns Admin can
+export as CSV) out to subsheets of a separate tracking spreadsheet.
 """
 import os, json, hashlib, sys, re
-from datetime import datetime
+from datetime import datetime, timedelta
 import gspread
 from google.oauth2.service_account import Credentials
 from supabase import create_client
@@ -16,6 +18,9 @@ CREDS    = json.loads(os.environ["GOOGLE_CREDS_JSON"])
 # checks this table). Optional so this script keeps working if it's unset —
 # just skips that part of the sync rather than erroring the whole job out.
 LEARNERS_SHEET_ID = os.environ.get("LEARNERS_SHEET_ID")
+# Separate spreadsheet that tracking-insight snapshots get written OUT to
+# (Admin's CSV exports, mirrored into subsheets). Optional, same reasoning.
+TRACKING_SHEET_ID = os.environ.get("TRACKING_SHEET_ID")
 # Opt-in "hard refresh": also deletes questions/assignments rows whose
 # fingerprint is no longer present in the sheet. Off by default — normal
 # syncs only add/update, never delete, so an admin edit or a manual sheet
@@ -182,9 +187,153 @@ def sync_allowed_learners(gc, supa):
         supa.table("allowed_learners").delete().in_("email", stale[i:i+200]).execute()
     print(f"learner allow-list: synced {len(emails)} emails, removed {len(stale)} stale")
 
+def select_paged(supa, table, select_cols, since_iso, date_col):
+    """Same idea as select_all, but with an optional `since` lower bound and
+    an explicit order so pagination across pages stays consistent."""
+    PAGE = 1000
+    out, frm = [], 0
+    while True:
+        q = supa.table(table).select(select_cols).order("id")
+        if since_iso:
+            q = q.gte(date_col, since_iso)
+        res = q.range(frm, frm + PAGE - 1).execute()
+        rows = res.data or []
+        out.extend(rows)
+        if len(rows) < PAGE:
+            break
+        frm += PAGE
+    return out
+
+def _fmt_ts(ts):
+    return (ts or "")[:19].replace("T", " ")
+
+# Each builder mirrors the equivalent grouping logic in AdminDashboard.tsx —
+# same grain, same columns — so a subsheet and its CSV-export counterpart on
+# the website never tell a different story.
+def build_usage_summary(views, sessions, packet_views):
+    m = {}
+    def touch(email, ts):
+        e = m.setdefault(email, {"views": 0, "minutes": 0.0, "packetsRead": 0, "last": ts})
+        if ts > e["last"]: e["last"] = ts
+        return e
+    for v in views: touch(v["user_email"], v["created_at"])["views"] += 1
+    for s in sessions: touch(s["user_email"], s["started_at"])["minutes"] += (s["duration_sec"] or 0) / 60
+    for p in packet_views: touch(p["user_email"], p["created_at"])["packetsRead"] += 1
+    rows = [["Email", "Views", "Minutes", "Packets Read", "Last Activity"]]
+    for email in sorted(m):
+        e = m[email]
+        rows.append([email, e["views"], round(e["minutes"]), e["packetsRead"], _fmt_ts(e["last"])])
+    return rows
+
+def build_company_role_breakdown(views):
+    m = {}
+    for v in views:
+        company, role = (v.get("company") or "").strip(), (v.get("role") or "").strip()
+        if not (company and role): continue
+        program = (v.get("program") or "").strip() or "—"
+        key = (v["user_email"], program, company, role)
+        e = m.setdefault(key, {"count": 0, "first": v["created_at"], "last": v["created_at"]})
+        e["count"] += 1
+        if v["created_at"] < e["first"]: e["first"] = v["created_at"]
+        if v["created_at"] > e["last"]: e["last"] = v["created_at"]
+    rows = [["Program", "Company", "Role", "Email", "First time date", "Last time date", "Count"]]
+    for (email, program, company, role), e in sorted(m.items(), key=lambda kv: kv[1]["last"], reverse=True):
+        rows.append([program, company, role, email, _fmt_ts(e["first"]), _fmt_ts(e["last"]), e["count"]])
+    return rows
+
+def build_packet_reads(packet_views):
+    m = {}
+    for v in packet_views:
+        p = v.get("packets") or {}
+        packet = f"{p.get('role') or '—'} · {p.get('yoe') or '—'}"
+        key = (v["user_email"], packet)
+        e = m.setdefault(key, {"count": 0, "first": v["created_at"], "last": v["created_at"]})
+        e["count"] += 1
+        if v["created_at"] < e["first"]: e["first"] = v["created_at"]
+        if v["created_at"] > e["last"]: e["last"] = v["created_at"]
+    rows = [["Packet", "Email", "First read", "Last read", "Count"]]
+    for (email, packet), e in sorted(m.items(), key=lambda kv: kv[1]["last"], reverse=True):
+        rows.append([packet, email, _fmt_ts(e["first"]), _fmt_ts(e["last"]), e["count"]])
+    return rows
+
+def build_assignment_opens(assignment_views):
+    m = {}
+    for v in assignment_views:
+        a = v.get("assignments") or {}
+        rnd = a.get("round")
+        assignment = f"{a.get('company') or '—'} — {a.get('role') or '—'}" + (f" · {rnd}" if rnd else "")
+        key = (v["user_email"], assignment)
+        e = m.setdefault(key, {"count": 0, "first": v["created_at"], "last": v["created_at"]})
+        e["count"] += 1
+        if v["created_at"] < e["first"]: e["first"] = v["created_at"]
+        if v["created_at"] > e["last"]: e["last"] = v["created_at"]
+    rows = [["Assignment", "Email", "First opened", "Last opened", "Count"]]
+    for (email, assignment), e in sorted(m.items(), key=lambda kv: kv[1]["last"], reverse=True):
+        rows.append([assignment, email, _fmt_ts(e["first"]), _fmt_ts(e["last"]), e["count"]])
+    return rows
+
+def build_video_watches(video_views):
+    m = {}
+    for v in video_views:
+        vr = v.get("video_resources") or {}
+        p = vr.get("packets") or {}
+        video = f"{vr.get('topic') or '—'} ({p.get('role') or '—'} · {p.get('yoe') or '—'})"
+        key = (v["user_email"], video)
+        e = m.setdefault(key, {"count": 0, "first": v["created_at"], "last": v["created_at"]})
+        e["count"] += 1
+        if v["created_at"] < e["first"]: e["first"] = v["created_at"]
+        if v["created_at"] > e["last"]: e["last"] = v["created_at"]
+    rows = [["Video", "Email", "First watched", "Last watched", "Count"]]
+    for (email, video), e in sorted(m.items(), key=lambda kv: kv[1]["last"], reverse=True):
+        rows.append([video, email, _fmt_ts(e["first"]), _fmt_ts(e["last"]), e["count"]])
+    return rows
+
+def write_subsheet(tsh, title, rows):
+    try:
+        ws = tsh.worksheet(title)
+        ws.clear()
+    except gspread.exceptions.WorksheetNotFound:
+        cols = len(rows[0]) if rows else 8
+        ws = tsh.add_worksheet(title=title, rows=max(len(rows) + 10, 100), cols=max(cols + 2, 8))
+    if rows:
+        ws.update(rows)
+    print(f"tracking sheet: wrote {max(len(rows) - 1, 0)} row(s) to {title!r}")
+
+def sync_tracking_to_sheet(gc, supa):
+    """Mirrors every Admin CSV export into its own subsheet of a separate
+    tracking spreadsheet — both an all-time and a rolling-30-day version of
+    each. Full-replace each run (not append): a subsheet always reflects
+    exactly the current database state, same as everything else this script
+    writes. Optional: skips cleanly if TRACKING_SHEET_ID isn't set."""
+    if not TRACKING_SHEET_ID:
+        print("TRACKING_SHEET_ID not set, skipping tracking-insights export", file=sys.stderr)
+        return
+    try:
+        tsh = gc.open_by_key(TRACKING_SHEET_ID)
+    except Exception as e:
+        print(f"tracking sheet: failed to open, skipping: {e}", file=sys.stderr)
+        return
+
+    thirty_days_ago = (datetime.utcnow() - timedelta(days=30)).isoformat()
+
+    for window_label, since in (("All time", None), ("Last 30d", thirty_days_ago)):
+        views             = select_paged(supa, "page_views", "user_email,company,role,program,created_at", since, "created_at")
+        sessions          = select_paged(supa, "sessions", "user_email,duration_sec,started_at", since, "started_at")
+        packet_views      = select_paged(supa, "packet_views", "user_email,created_at,packets(role,yoe)", since, "created_at")
+        assignment_views  = select_paged(supa, "assignment_views", "user_email,created_at,assignments(program,company,role,round)", since, "created_at")
+        video_views       = select_paged(supa, "video_resource_views", "user_email,created_at,video_resources(topic,packets(role,yoe))", since, "created_at")
+
+        write_subsheet(tsh, f"Usage Summary ({window_label})", build_usage_summary(views, sessions, packet_views))
+        write_subsheet(tsh, f"Company & Role ({window_label})", build_company_role_breakdown(views))
+        write_subsheet(tsh, f"Packet Reads ({window_label})", build_packet_reads(packet_views))
+        write_subsheet(tsh, f"Assignment Opens ({window_label})", build_assignment_opens(assignment_views))
+        write_subsheet(tsh, f"Videos Watched ({window_label})", build_video_watches(video_views))
+
 def main():
+    # Read-write (not read-only): the tracking-insights export below writes
+    # subsheets back to a spreadsheet. Everything else here only ever reads.
     creds = Credentials.from_service_account_info(
-        CREDS, scopes=["https://www.googleapis.com/auth/spreadsheets.readonly"]
+        CREDS, scopes=["https://www.googleapis.com/auth/spreadsheets"]
     )
     gc = gspread.authorize(creds)
     sh = gc.open_by_key(SHEET_ID)
@@ -329,6 +478,12 @@ def main():
                 delete_stale(supa, "assignments", {r["fingerprint"] for r in a_rows}, only_where_null="added_by")
     except Exception as e:
         print(f"assignments error: {e}", file=sys.stderr)
+
+    # --- Tracking insights -> subsheets (Sheet <- Supabase, opposite direction) ---
+    try:
+        sync_tracking_to_sheet(gc, supa)
+    except Exception as e:
+        print(f"tracking sheet error: {e}", file=sys.stderr)
 
     print("done at", datetime.utcnow().isoformat())
 
