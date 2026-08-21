@@ -129,6 +129,18 @@ create index if not exists idx_av_email   on assignment_views (user_email);
 create index if not exists idx_av_assignment on assignment_views (assignment_id);
 create index if not exists idx_av_created on assignment_views (created_at desc);
 
+-- ============ FEEDBACK ============
+create table if not exists feedback (
+  id                bigserial primary key,
+  user_email        text not null,
+  platform_rating   int not null check (platform_rating between 1 and 5),
+  usefulness_rating int not null check (usefulness_rating between 1 and 5),
+  feedback_text     text,
+  created_at        timestamptz default now()
+);
+create index if not exists idx_feedback_email   on feedback (user_email);
+create index if not exists idx_feedback_created on feedback (created_at desc);
+
 -- ============ ACCESS CONTROL ============
 -- Only these emails (synced nightly from the learner-tracking sheet, or
 -- granted manually via Admin) plus anyone in `admins` may sign in — enforced
@@ -153,6 +165,7 @@ alter table video_resources      enable row level security;
 alter table video_resource_views enable row level security;
 alter table assignment_views     enable row level security;
 alter table allowed_learners     enable row level security;
+alter table feedback             enable row level security;
 
 -- Policies aren't CREATE-IF-NOT-EXISTS-able in Postgres, and the Supabase SQL editor
 -- runs a pasted script as one transaction — one "already exists" error rolls back
@@ -168,12 +181,16 @@ drop policy if exists "read assignments" on assignments;
 drop policy if exists "insert own view" on page_views;
 drop policy if exists "own sessions rw" on sessions;
 drop policy if exists "admins read self" on admins;
+drop policy if exists "insert own feedback" on feedback;
 
 create policy "read packets" on packets for select using (auth.role() = 'authenticated');
 create policy "insert own packet view" on packet_views for insert with check (auth.jwt() ->> 'email' = user_email);
 create policy "read video resources" on video_resources for select using (auth.role() = 'authenticated');
 create policy "insert own video resource view" on video_resource_views for insert with check (auth.jwt() ->> 'email' = user_email);
 create policy "insert own assignment view" on assignment_views for insert with check (auth.jwt() ->> 'email' = user_email);
+-- No select policy: learners only ever insert their own feedback; only the
+-- service-role client (Admin, sheet export) reads it back.
+create policy "insert own feedback" on feedback for insert with check (auth.jwt() ->> 'email' = user_email);
 -- allowed_learners has no policies: only the service-role client (auth
 -- callback, sync job) ever touches it, so RLS with zero policies is exactly
 -- "deny all to anon/authenticated" — the intended behavior.

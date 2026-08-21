@@ -35,21 +35,24 @@ export async function GET(req: Request) {
   let packetViewsQ     = admin.from("packet_views").select("user_email,created_at,packets(role,yoe)").gte("created_at", since);
   let assignmentViewsQ = admin.from("assignment_views").select("user_email,created_at,assignments(program,company,role,round)").gte("created_at", since);
   let videoViewsQ      = admin.from("video_resource_views").select("user_email,created_at,video_resources(topic,packets(role,yoe))").gte("created_at", since);
+  let feedbackQ        = admin.from("feedback").select("user_email,platform_rating,usefulness_rating,feedback_text,created_at").gte("created_at", since);
   if (until) {
     viewsQ           = viewsQ.lte("created_at", until);
     sessionsQ        = sessionsQ.lte("started_at", until);
     packetViewsQ     = packetViewsQ.lte("created_at", until);
     assignmentViewsQ = assignmentViewsQ.lte("created_at", until);
     videoViewsQ      = videoViewsQ.lte("created_at", until);
+    feedbackQ        = feedbackQ.lte("created_at", until);
   }
 
-  const [views, sessions, admins, packetViews, assignmentViews, videoViews] = await Promise.all([
+  const [views, sessions, admins, packetViews, assignmentViews, videoViews, feedback] = await Promise.all([
     viewsQ,
     sessionsQ,
     admin.from("admins").select("email,added_at,added_by").order("added_at", { ascending: true }),
     packetViewsQ,
     assignmentViewsQ,
     videoViewsQ,
+    feedbackQ,
   ]);
 
   return NextResponse.json({
@@ -75,5 +78,6 @@ export async function GET(req: Request) {
       role: r.video_resources?.packets?.role ?? null,
       yoe: r.video_resources?.packets?.yoe ?? null,
     })),
+    feedback: feedback.data || [],
   });
 }

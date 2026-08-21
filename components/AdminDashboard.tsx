@@ -14,6 +14,7 @@ type Stats = {
   packetViews: { user_email: string; created_at: string; role: string | null; yoe: string | null }[];
   assignmentViews: { user_email: string; created_at: string; program: string | null; company: string | null; role: string | null; round: string | null }[];
   videoViews: { user_email: string; created_at: string; topic: string | null; role: string | null; yoe: string | null }[];
+  feedback: { user_email: string; platform_rating: number; usefulness_rating: number; feedback_text: string | null; created_at: string }[];
 };
 
 const RANGES = [
@@ -105,6 +106,9 @@ function buildVideoByEmail(videoViews: Stats["videoViews"]) {
     m.set(k, e);
   });
   return Array.from(m.values()).sort((a, b) => b.last.localeCompare(a.last));
+}
+function buildFeedbackRows(feedback: Stats["feedback"]) {
+  return [...feedback].sort((a, b) => b.created_at.localeCompare(a.created_at));
 }
 function buildPerUser(views: Stats["views"], sessions: Stats["sessions"]) {
   const m = new Map<string, { views: number; minutes: number; last: string }>();
@@ -213,6 +217,7 @@ export default function AdminDashboard({ me }: { me: string }) {
   const [packetQuery, setPacketQuery] = useState("");
   const [assignmentQuery, setAssignmentQuery] = useState("");
   const [videoQuery, setVideoQuery] = useState("");
+  const [feedbackQuery, setFeedbackQuery] = useState("");
   const [hardRefreshing, setHardRefreshing] = useState(false);
   const [hardRefreshMsg, setHardRefreshMsg] = useState<string | null>(null);
 
@@ -326,6 +331,23 @@ export default function AdminDashboard({ me }: { me: string }) {
     return videoByEmailAll.filter(r => r.email.toLowerCase().includes(qL) || r.video.toLowerCase().includes(qL));
   }, [videoByEmailAll, videoQuery]);
 
+  const feedbackRowsAll = useMemo(() => data ? buildFeedbackRows(data.feedback) : [], [data]);
+  const feedbackRows = useMemo(() => {
+    const qL = feedbackQuery.trim().toLowerCase();
+    if (!qL) return feedbackRowsAll;
+    return feedbackRowsAll.filter(r =>
+      r.user_email.toLowerCase().includes(qL) || (r.feedback_text || "").toLowerCase().includes(qL)
+    );
+  }, [feedbackRowsAll, feedbackQuery]);
+  const avgPlatformRating = useMemo(
+    () => feedbackRowsAll.length ? feedbackRowsAll.reduce((s, r) => s + r.platform_rating, 0) / feedbackRowsAll.length : 0,
+    [feedbackRowsAll]
+  );
+  const avgUsefulnessRating = useMemo(
+    () => feedbackRowsAll.length ? feedbackRowsAll.reduce((s, r) => s + r.usefulness_rating, 0) / feedbackRowsAll.length : 0,
+    [feedbackRowsAll]
+  );
+
   const addAdmin = async () => {
     if (!newAdmin.includes("@")) return;
     await fetch("/api/admin/add-admin", { method: "POST", headers: {"content-type":"application/json"}, body: JSON.stringify({ email: newAdmin }) });
@@ -433,6 +455,18 @@ export default function AdminDashboard({ me }: { me: string }) {
       ]),
     ];
     downloadCsv(`admin-video-breakdown-${from}_to_${to}.csv`, rows);
+  };
+
+  const exportFeedbackCsv = async (from: string, to: string) => {
+    const d = await fetchStatsWindow(from, to);
+    if (!d) { alert("Couldn't load data for that range."); return; }
+    const rows: (string | number)[][] = [
+      ["Email", "Platform Rating", "Usefulness Rating", "Feedback", "Submitted At"],
+      ...buildFeedbackRows(d.feedback).map(r => [
+        r.user_email, r.platform_rating, r.usefulness_rating, r.feedback_text || "", new Date(r.created_at).toLocaleString(),
+      ]),
+    ];
+    downloadCsv(`admin-feedback-${from}_to_${to}.csv`, rows);
   };
 
   return (
@@ -713,6 +747,55 @@ export default function AdminDashboard({ me }: { me: string }) {
                   <td className="py-2 font-mono text-xs text-mute">{new Date(r.first).toLocaleString()}</td>
                   <td className="py-2 font-mono text-xs text-mute">{new Date(r.last).toLocaleString()}</td>
                   <td className="py-2 text-right font-mono text-xs">{r.count}</td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        </div>
+      </Card>
+
+      <Card title={`Learner feedback (${feedbackRows.length})`} accent="acad">
+        <div className="mb-4 grid grid-cols-2 gap-3 sm:max-w-sm">
+          <div className="rounded-xl border border-edge/60 bg-panel2 px-3 py-2">
+            <div className="font-mono text-[10px] uppercase tracking-widest text-mute">Avg. platform rating</div>
+            <div className="font-display text-2xl">{avgPlatformRating ? avgPlatformRating.toFixed(1) : "—"}<span className="text-sm text-mute"> / 5</span></div>
+          </div>
+          <div className="rounded-xl border border-edge/60 bg-panel2 px-3 py-2">
+            <div className="font-mono text-[10px] uppercase tracking-widest text-mute">Avg. usefulness rating</div>
+            <div className="font-display text-2xl">{avgUsefulnessRating ? avgUsefulnessRating.toFixed(1) : "—"}<span className="text-sm text-mute"> / 5</span></div>
+          </div>
+        </div>
+        <div className="mb-4 flex flex-wrap items-center gap-2">
+          <input
+            value={feedbackQuery}
+            onChange={e => setFeedbackQuery(e.target.value)}
+            placeholder="filter by email or feedback text..."
+            className="min-w-[220px] flex-1 rounded-xl border border-edge bg-panel2 px-3 py-2 text-sm text-text placeholder:text-mute/60 focus:border-acad focus:outline-none"
+          />
+          <ExportButton defaultFrom={customFrom} defaultTo={customTo} onExport={exportFeedbackCsv} />
+        </div>
+        <div className="max-h-[420px] overflow-y-auto">
+          <table className="w-full text-sm">
+            <thead className="sticky top-0 bg-panel text-left font-mono text-[11px] uppercase tracking-widest text-mute">
+              <tr>
+                <th className="py-2">Email</th>
+                <th className="py-2">Platform</th>
+                <th className="py-2">Usefulness</th>
+                <th className="py-2">Feedback</th>
+                <th className="py-2">Submitted</th>
+              </tr>
+            </thead>
+            <tbody className="divide-y divide-edge/60">
+              {feedbackRows.length === 0 && (
+                <tr><td colSpan={5} className="py-4 text-mute">No feedback submitted yet in this window.</td></tr>
+              )}
+              {feedbackRows.map(r => (
+                <tr key={`${r.user_email}|${r.created_at}`}>
+                  <td className="py-2">{r.user_email}</td>
+                  <td className="py-2 text-acad">{"★".repeat(r.platform_rating)}{"☆".repeat(5 - r.platform_rating)}</td>
+                  <td className="py-2 text-acad">{"★".repeat(r.usefulness_rating)}{"☆".repeat(5 - r.usefulness_rating)}</td>
+                  <td className="max-w-[280px] py-2 text-mute">{r.feedback_text || "—"}</td>
+                  <td className="py-2 font-mono text-xs text-mute">{new Date(r.created_at).toLocaleString()}</td>
                 </tr>
               ))}
             </tbody>

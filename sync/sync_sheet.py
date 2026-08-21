@@ -288,6 +288,15 @@ def build_video_watches(video_views):
         rows.append([video, email, _fmt_ts(e["first"]), _fmt_ts(e["last"]), e["count"]])
     return rows
 
+def build_feedback_rows(feedback):
+    rows = [["Email", "Platform Rating", "Usefulness Rating", "Feedback", "Submitted At"]]
+    for f in sorted(feedback, key=lambda r: r["created_at"], reverse=True):
+        rows.append([
+            f["user_email"], f["platform_rating"], f["usefulness_rating"],
+            f.get("feedback_text") or "", _fmt_ts(f["created_at"]),
+        ])
+    return rows
+
 def write_subsheet(tsh, title, rows):
     try:
         ws = tsh.worksheet(title)
@@ -322,12 +331,14 @@ def sync_tracking_to_sheet(gc, supa):
         packet_views      = select_paged(supa, "packet_views", "user_email,created_at,packets(role,yoe)", since, "created_at")
         assignment_views  = select_paged(supa, "assignment_views", "user_email,created_at,assignments(program,company,role,round)", since, "created_at")
         video_views       = select_paged(supa, "video_resource_views", "user_email,created_at,video_resources(topic,packets(role,yoe))", since, "created_at")
+        feedback          = select_paged(supa, "feedback", "user_email,platform_rating,usefulness_rating,feedback_text,created_at", since, "created_at")
 
         write_subsheet(tsh, f"Usage Summary ({window_label})", build_usage_summary(views, sessions, packet_views))
         write_subsheet(tsh, f"Company & Role ({window_label})", build_company_role_breakdown(views))
         write_subsheet(tsh, f"Packet Reads ({window_label})", build_packet_reads(packet_views))
         write_subsheet(tsh, f"Assignment Opens ({window_label})", build_assignment_opens(assignment_views))
         write_subsheet(tsh, f"Videos Watched ({window_label})", build_video_watches(video_views))
+        write_subsheet(tsh, f"Feedback ({window_label})", build_feedback_rows(feedback))
 
 def main():
     # Read-write (not read-only): the tracking-insights export below writes
