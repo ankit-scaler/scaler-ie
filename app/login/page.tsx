@@ -4,7 +4,6 @@ import { useSearchParams } from "next/navigation";
 import { motion } from "framer-motion";
 import { supabaseBrowser } from "@/lib/supabase-browser";
 import ScalerLogo from "@/components/ScalerLogo";
-import InteractiveConfetti from "@/components/InteractiveConfetti";
 
 const fadeUp = (delay: number) => ({
   initial: { opacity: 0, y: 12 },
@@ -51,9 +50,8 @@ export default function LoginPage() {
     });
   };
   return (
-    <div className="relative flex min-h-[70vh] flex-col items-center justify-center">
-      <InteractiveConfetti />
-      <div className="relative mx-auto flex max-w-md flex-col items-center text-center">
+    <div className="flex min-h-[70vh] flex-col items-center justify-center">
+      <div className="mx-auto flex max-w-md flex-col items-center text-center">
         <motion.div {...fadeUp(0)}>
           <ScalerLogo className="mb-8 h-7 w-auto text-text" />
         </motion.div>
