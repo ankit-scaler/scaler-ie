@@ -4,6 +4,7 @@ import { useSearchParams } from "next/navigation";
 import { motion } from "framer-motion";
 import { supabaseBrowser } from "@/lib/supabase-browser";
 import ScalerLogo from "@/components/ScalerLogo";
+import HangingLight from "@/components/HangingLight";
 
 const fadeUp = (delay: number) => ({
   initial: { opacity: 0, y: 12 },
@@ -52,8 +53,10 @@ export default function LoginPage() {
   return (
     <div className="flex min-h-[70vh] flex-col items-center justify-center">
       <div className="mx-auto flex max-w-md flex-col items-center text-center">
-        <motion.div {...fadeUp(0)}>
-          <ScalerLogo className="mb-8 h-7 w-auto text-text" />
+        <motion.div {...fadeUp(0)} className="mb-8">
+          <HangingLight>
+            <ScalerLogo className="h-7 w-auto text-text" />
+          </HangingLight>
         </motion.div>
         <motion.h1 {...fadeUp(0.08)} className="mb-3 font-display text-4xl leading-tight">
           Real questions.<br />From real Scaler learners.
