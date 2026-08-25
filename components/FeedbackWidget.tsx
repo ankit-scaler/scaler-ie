@@ -1,5 +1,6 @@
 "use client";
 import { useEffect, useState } from "react";
+import { motion } from "framer-motion";
 import { supabaseBrowser } from "@/lib/supabase-browser";
 
 function Stars({ value, onChange }: { value: number; onChange: (n: number) => void }) {
@@ -57,12 +58,14 @@ export default function FeedbackWidget() {
 
   return (
     <>
-      <button
+      <motion.button
         onClick={() => setOpen(true)}
-        className="fixed bottom-5 right-5 z-40 rounded-full bg-text px-4 py-2.5 text-sm font-medium text-ink shadow-cardH transition hover:opacity-90"
+        whileHover={{ scale: 1.05 }}
+        whileTap={{ scale: 0.95 }}
+        className="fixed bottom-5 right-5 z-40 rounded-full bg-text px-4 py-2.5 text-sm font-medium text-ink shadow-cardH transition-opacity hover:opacity-90"
       >
         Share feedback
-      </button>
+      </motion.button>
 
       {open && (
         <div

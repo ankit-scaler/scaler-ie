@@ -1,5 +1,6 @@
 "use client";
 import { useMemo } from "react";
+import { motion } from "framer-motion";
 
 export type FilterState = {
   program: string; company: string; role: string; round: string; q: string;
@@ -49,28 +50,30 @@ export default function Filters({
   }, [filteredForCompany, state.company, state.role]);
 
   const Pill = ({ value, active, onClick }: { value: string; active: boolean; onClick: () => void }) => (
-    <button
+    <motion.button
       onClick={onClick}
-      className={`whitespace-nowrap rounded-full border px-3 py-1.5 text-sm transition ${
+      whileHover={{ scale: 1.04 }}
+      whileTap={{ scale: 0.96 }}
+      className={`whitespace-nowrap rounded-full border px-3 py-1.5 text-sm transition-colors ${
         active ? "border-text bg-text text-ink" : "border-edge text-mute hover:border-text/40 hover:text-text"
       }`}
-    >{value}</button>
+    >{value}</motion.button>
   );
 
-  const Select = ({ label, value, options, onChange }: {
-    label: string; value: string; options: string[]; onChange: (v: string) => void;
+  const Select = ({ label, value, options, onChange, accent }: {
+    label: string; value: string; options: string[]; onChange: (v: string) => void; accent: string;
   }) => (
-    <label className="flex min-w-0 flex-col gap-1.5">
-      <span className="font-mono text-[11px] uppercase tracking-widest text-mute">{label}</span>
+    <label className="group flex min-w-0 flex-col gap-1.5">
+      <span className={`font-mono text-[11px] font-semibold uppercase tracking-widest ${accent}`}>{label}</span>
       <div className="relative">
         <select
           value={value}
           onChange={(e) => onChange(e.target.value)}
-          className="w-full appearance-none rounded-xl border border-edge bg-panel px-3 py-2.5 pr-9 text-sm text-text focus:border-acad focus:outline-none"
+          className="w-full appearance-none rounded-xl border border-edge bg-panel px-3 py-2.5 pr-9 text-sm text-text transition-colors focus:border-acad focus:outline-none group-hover:border-text/40"
         >
           {options.map(o => <option key={o} value={o} className="bg-panel">{o}</option>)}
         </select>
-        <svg className="pointer-events-none absolute right-3 top-1/2 h-4 w-4 -translate-y-1/2 text-mute" viewBox="0 0 20 20" fill="currentColor">
+        <svg className="pointer-events-none absolute right-3 top-1/2 h-4 w-4 -translate-y-1/2 text-mute transition-transform group-hover:translate-y-[calc(-50%+1px)]" viewBox="0 0 20 20" fill="currentColor">
           <path d="M5 8l5 5 5-5H5z" />
         </svg>
       </div>
@@ -86,21 +89,21 @@ export default function Filters({
         ))}
       </div>
       <div className={`grid grid-cols-1 gap-3 ${showRound ? "sm:grid-cols-4" : "sm:grid-cols-3"}`}>
-        <Select label="Company" value={state.company} options={companies}
+        <Select label="Company" value={state.company} options={companies} accent="text-acad"
           onChange={v => setState({ ...state, company: v, role: "All", round: "All" })} />
-        <Select label="Role" value={state.role} options={roles}
+        <Select label="Role" value={state.role} options={roles} accent="text-dsml"
           onChange={v => setState({ ...state, role: v, round: "All" })} />
         {showRound && (
-          <Select label="Round" value={state.round} options={rounds}
+          <Select label="Round" value={state.round} options={rounds} accent="text-aiml"
             onChange={v => setState({ ...state, round: v })} />
         )}
-        <label className="flex flex-col gap-1.5">
-          <span className="font-mono text-[11px] uppercase tracking-widest text-mute">Search</span>
+        <label className="group flex flex-col gap-1.5">
+          <span className="font-mono text-[11px] font-semibold uppercase tracking-widest text-devops">Search</span>
           <input
             value={state.q}
             onChange={e => setState({ ...state, q: e.target.value })}
             placeholder="keyword..."
-            className="rounded-xl border border-edge bg-panel px-3 py-2.5 text-sm text-text placeholder:text-mute/60 focus:border-acad focus:outline-none"
+            className="rounded-xl border border-edge bg-panel px-3 py-2.5 text-sm text-text placeholder:text-mute/60 transition-colors focus:border-acad focus:outline-none group-hover:border-text/40"
           />
         </label>
       </div>
