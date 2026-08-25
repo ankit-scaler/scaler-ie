@@ -38,9 +38,9 @@ export default function QuestionCard({
         <span className={`inline-flex items-center gap-1.5 rounded-full border px-3 py-1 font-medium ${BADGE[prog]}`}>
           <span className={`h-1.5 w-1.5 rounded-full ${DOT[prog]}`} />{q.program}
         </span>
-        <span className="rounded-full border border-edge bg-panel2 px-3 py-1 text-mute">{q.company.trim()}</span>
-        <span className="rounded-full border border-edge bg-panel2 px-3 py-1 text-mute">{q.role.trim()}</span>
-        {q.round && <span className="rounded-full border border-edge bg-panel2 px-3 py-1 text-mute">{q.round}</span>}
+        <span className="rounded-full border border-acad/30 bg-acad/10 px-3 py-1 text-acad">{q.company.trim()}</span>
+        <span className="rounded-full border border-dsml/30 bg-dsml/10 px-3 py-1 text-dsml">{q.role.trim()}</span>
+        {q.round && <span className="rounded-full border border-aiml/30 bg-aiml/10 px-3 py-1 text-aiml">{q.round}</span>}
       </div>
       <p className="whitespace-pre-wrap break-words text-base leading-relaxed text-text">{q.question}</p>
       {q.related_topic && (

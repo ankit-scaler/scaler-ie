@@ -39,21 +39,20 @@ export default function Header() {
     return (
       <Link
         href={href}
-        className={`group relative whitespace-nowrap rounded-full border border-transparent px-4 py-1.5 text-sm transition-colors ${
+        className={`group relative whitespace-nowrap rounded-full px-4 py-1.5 text-sm transition-colors duration-200 ${
           active ? "text-text" : "text-mute hover:text-text"
         }`}
       >
-        {active && (
+        {active ? (
           <motion.span
             layoutId="nav-active-pill"
             className="absolute inset-0 rounded-full border border-edge bg-panel2"
-            transition={{ type: "spring", stiffness: 380, damping: 32 }}
+            transition={{ type: "spring", stiffness: 500, damping: 42 }}
           />
+        ) : (
+          <span className="absolute inset-0 rounded-full bg-panel2 opacity-0 transition-opacity duration-200 group-hover:opacity-70" />
         )}
         <span className="relative z-10">{label}</span>
-        {!active && (
-          <span className="pointer-events-none absolute inset-x-4 -bottom-0.5 h-px origin-left scale-x-0 bg-text/50 transition-transform duration-300 ease-out group-hover:scale-x-100" />
-        )}
       </Link>
     );
   };
@@ -61,8 +60,8 @@ export default function Header() {
   return (
     <header className="sticky top-0 z-40 border-b border-edge/60 bg-ink/70 backdrop-blur-xl">
       <div className="mx-auto flex max-w-7xl items-center justify-between px-4 py-3 sm:px-6">
-        <Link href="/" className="group flex items-center gap-2 transition-opacity hover:opacity-80">
-          <ScalerLogo className="h-6 w-auto text-text transition-transform duration-300 group-hover:scale-105" />
+        <Link href="/" className="flex items-center gap-2 transition-opacity duration-200 hover:opacity-80">
+          <ScalerLogo className="h-6 w-auto text-text" />
           <span className="hidden font-display text-xl leading-none sm:inline">Interview Vault</span>
           <span className="relative hidden h-2 w-2 sm:inline-flex" title="Live">
             <span className="absolute inline-flex h-full w-full animate-ping rounded-full bg-red-500 opacity-75" />
@@ -89,9 +88,9 @@ export default function Header() {
                   router.push("/login");
                 }}
                 disabled={signingOut}
-                whileHover={{ scale: 1.04 }}
-                whileTap={{ scale: 0.95 }}
-                className="rounded-full border border-edge px-3 py-1.5 text-sm text-mute transition-colors hover:border-text/40 hover:bg-panel2 hover:text-text disabled:opacity-50"
+                whileTap={{ scale: 0.96 }}
+                transition={{ duration: 0.1 }}
+                className="rounded-full border border-edge px-3 py-1.5 text-sm text-mute transition-colors duration-200 hover:border-text/40 hover:bg-panel2 hover:text-text disabled:opacity-50"
               >{signingOut ? "Signing out…" : "Sign out"}</motion.button>
             </>
           ) : (
@@ -104,9 +103,9 @@ export default function Header() {
                   options: { redirectTo: callback.toString() },
                 });
               }}
-              whileHover={{ scale: 1.04 }}
-              whileTap={{ scale: 0.95 }}
-              className="rounded-full bg-text px-3 py-1.5 text-sm font-medium text-ink transition-opacity hover:opacity-90"
+              whileTap={{ scale: 0.96 }}
+              transition={{ duration: 0.1 }}
+              className="rounded-full bg-text px-3 py-1.5 text-sm font-medium text-ink transition-opacity duration-200 hover:opacity-90"
             >
               Sign in
             </motion.button>

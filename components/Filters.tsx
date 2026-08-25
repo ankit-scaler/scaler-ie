@@ -52,9 +52,9 @@ export default function Filters({
   const Pill = ({ value, active, onClick }: { value: string; active: boolean; onClick: () => void }) => (
     <motion.button
       onClick={onClick}
-      whileHover={{ scale: 1.04 }}
       whileTap={{ scale: 0.96 }}
-      className={`whitespace-nowrap rounded-full border px-3 py-1.5 text-sm transition-colors ${
+      transition={{ duration: 0.1 }}
+      className={`whitespace-nowrap rounded-full border px-3 py-1.5 text-sm transition-colors duration-200 ${
         active ? "border-text bg-text text-ink" : "border-edge text-mute hover:border-text/40 hover:text-text"
       }`}
     >{value}</motion.button>
@@ -73,7 +73,7 @@ export default function Filters({
         >
           {options.map(o => <option key={o} value={o} className="bg-panel">{o}</option>)}
         </select>
-        <svg className="pointer-events-none absolute right-3 top-1/2 h-4 w-4 -translate-y-1/2 text-mute transition-transform group-hover:translate-y-[calc(-50%+1px)]" viewBox="0 0 20 20" fill="currentColor">
+        <svg className="pointer-events-none absolute right-3 top-1/2 h-4 w-4 -translate-y-1/2 text-mute transition-colors duration-200 group-hover:text-text" viewBox="0 0 20 20" fill="currentColor">
           <path d="M5 8l5 5 5-5H5z" />
         </svg>
       </div>

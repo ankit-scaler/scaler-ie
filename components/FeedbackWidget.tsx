@@ -60,9 +60,9 @@ export default function FeedbackWidget() {
     <>
       <motion.button
         onClick={() => setOpen(true)}
-        whileHover={{ scale: 1.05 }}
-        whileTap={{ scale: 0.95 }}
-        className="fixed bottom-5 right-5 z-40 rounded-full bg-text px-4 py-2.5 text-sm font-medium text-ink shadow-cardH transition-opacity hover:opacity-90"
+        whileTap={{ scale: 0.96 }}
+        transition={{ duration: 0.1 }}
+        className="fixed bottom-5 right-5 z-40 rounded-full bg-text px-4 py-2.5 text-sm font-medium text-ink shadow-cardH transition-opacity duration-200 hover:opacity-90"
       >
         Share feedback
       </motion.button>
