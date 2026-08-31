@@ -225,6 +225,15 @@ def build_usage_summary(views, sessions, packet_views):
         rows.append([email, e["views"], round(e["minutes"]), e["packetsRead"], _fmt_ts(e["last"])])
     return rows
 
+def build_daily_visits(sessions):
+    rows = [["Email", "Date", "Time", "Duration (min)", "Last Seen"]]
+    for s in sorted(sessions, key=lambda r: r["started_at"], reverse=True):
+        started = s["started_at"] or ""
+        date, time = (started[:10], started[11:19]) if started else ("", "")
+        minutes = round((s["duration_sec"] or 0) / 60)
+        rows.append([s["user_email"], date, time, minutes, _fmt_ts(s.get("last_beat_at"))])
+    return rows
+
 def build_company_role_breakdown(views):
     m = {}
     for v in views:
@@ -327,12 +336,13 @@ def sync_tracking_to_sheet(gc, supa):
 
     for window_label, since in (("All time", None), ("Last 30d", thirty_days_ago)):
         views             = select_paged(supa, "page_views", "user_email,company,role,program,created_at", since, "created_at")
-        sessions          = select_paged(supa, "sessions", "user_email,duration_sec,started_at", since, "started_at")
+        sessions          = select_paged(supa, "sessions", "user_email,duration_sec,started_at,last_beat_at", since, "started_at")
         packet_views      = select_paged(supa, "packet_views", "user_email,created_at,packets(role,yoe)", since, "created_at")
         assignment_views  = select_paged(supa, "assignment_views", "user_email,created_at,assignments(program,company,role,round)", since, "created_at")
         video_views       = select_paged(supa, "video_resource_views", "user_email,created_at,video_resources(topic,packets(role,yoe))", since, "created_at")
         feedback          = select_paged(supa, "feedback", "user_email,platform_rating,usefulness_rating,feedback_text,created_at", since, "created_at")
 
+        write_subsheet(tsh, f"Daily Visits ({window_label})", build_daily_visits(sessions))
         write_subsheet(tsh, f"Usage Summary ({window_label})", build_usage_summary(views, sessions, packet_views))
         write_subsheet(tsh, f"Company & Role ({window_label})", build_company_role_breakdown(views))
         write_subsheet(tsh, f"Packet Reads ({window_label})", build_packet_reads(packet_views))
