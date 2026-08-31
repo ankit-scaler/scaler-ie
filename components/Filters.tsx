@@ -3,7 +3,7 @@ import { useMemo } from "react";
 import { motion } from "framer-motion";
 
 export type FilterState = {
-  program: string; company: string; role: string; round: string; q: string;
+  program: string; company: string; role: string; round: string; topic: string; q: string;
 };
 
 // Canonical spelling + display order for known programs; anything else found
@@ -11,12 +11,13 @@ export type FilterState = {
 const CANONICAL_PROGRAMS = ["Academy", "DSML", "AIML", "DevOps"];
 
 export default function Filters({
-  data, state, setState, showRound = true,
+  data, state, setState, showRound = true, showTopic = false,
 }: {
-  data: { program?: string; company: string; role: string; round?: string | null }[];
+  data: { program?: string; company: string; role: string; round?: string | null; related_topic?: string | null }[];
   state: FilterState;
   setState: (s: FilterState) => void;
   showRound?: boolean;
+  showTopic?: boolean;
 }) {
   // Only show a program pill if this dataset actually has rows for it — e.g.
   // AIML shouldn't appear on Assignments if no assignment has that program.
@@ -48,6 +49,12 @@ export default function Filters({
     );
     return ["All", ...Array.from(new Set(scope.map(d => d.round || "").filter(Boolean))).sort()];
   }, [filteredForCompany, state.company, state.role]);
+  // Topic is a cross-cutting facet (any company/role can carry any topic),
+  // so unlike rounds it's scoped only to the program pill, not company/role.
+  const topics = useMemo(
+    () => ["All", ...Array.from(new Set(filteredForCompany.map(d => d.related_topic || "").filter(Boolean))).sort()],
+    [filteredForCompany]
+  );
 
   const Pill = ({ value, active, onClick }: { value: string; active: boolean; onClick: () => void }) => (
     <motion.button
@@ -85,10 +92,12 @@ export default function Filters({
       <div className="flex flex-wrap gap-1.5">
         {programs.map(p => (
           <Pill key={p} value={p} active={state.program === p}
-            onClick={() => setState({ ...state, program: p, company: "All", role: "All", round: "All" })} />
+            onClick={() => setState({ ...state, program: p, company: "All", role: "All", round: "All", topic: "All" })} />
         ))}
       </div>
-      <div className={`grid grid-cols-1 gap-3 ${showRound ? "sm:grid-cols-4" : "sm:grid-cols-3"}`}>
+      <div className={`grid grid-cols-1 gap-3 sm:grid-cols-2 ${
+        showRound && showTopic ? "lg:grid-cols-5" : showRound || showTopic ? "lg:grid-cols-4" : "lg:grid-cols-3"
+      }`}>
         <Select label="Company" value={state.company} options={companies} accent="text-acad"
           onChange={v => setState({ ...state, company: v, role: "All", round: "All" })} />
         <Select label="Role" value={state.role} options={roles} accent="text-dsml"
@@ -96,6 +105,10 @@ export default function Filters({
         {showRound && (
           <Select label="Round" value={state.round} options={rounds} accent="text-aiml"
             onChange={v => setState({ ...state, round: v })} />
+        )}
+        {showTopic && (
+          <Select label="Topic" value={state.topic} options={topics} accent="text-topic"
+            onChange={v => setState({ ...state, topic: v })} />
         )}
         <label className="group flex flex-col gap-1.5">
           <span className="font-mono text-[11px] font-semibold uppercase tracking-widest text-devops">Search</span>

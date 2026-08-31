@@ -14,6 +14,7 @@ export default {
         dsml:   "rgb(var(--dsml) / <alpha-value>)",
         aiml:   "rgb(var(--aiml) / <alpha-value>)",
         devops: "rgb(var(--devops) / <alpha-value>)",
+        topic:  "rgb(var(--topic) / <alpha-value>)",
       },
       fontFamily: {
         display: ["Sora", "system-ui", "sans-serif"],

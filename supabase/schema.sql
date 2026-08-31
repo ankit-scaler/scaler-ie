@@ -50,12 +50,14 @@ create table if not exists page_views (
   company    text,
   role       text,
   program    text,
+  topic      text,
   path       text,
   created_at timestamptz default now()
 );
 create index if not exists idx_pv_email on page_views (user_email);
 create index if not exists idx_pv_created on page_views (created_at desc);
 create index if not exists idx_pv_company_role on page_views (company, role);
+create index if not exists idx_pv_topic on page_views (topic);
 
 create table if not exists sessions (
   id            bigserial primary key,

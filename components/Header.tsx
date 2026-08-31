@@ -14,6 +14,10 @@ export default function Header() {
   const path = usePathname();
   const router = useRouter();
   const sb = supabaseBrowser();
+  // A packet reader page forces light mode for readability (see
+  // ForceLightTheme) — hide the toggle there instead of showing a control
+  // that would silently get overridden.
+  const isPacketOpen = /^\/packets\/[^/]+/.test(path || "");
 
   useEffect(() => {
     const applyUser = async (e: string | null) => {
@@ -77,7 +81,7 @@ export default function Header() {
           </nav>
         )}
         <div className="flex items-center gap-3">
-          <ThemeToggle />
+          {!isPacketOpen && <ThemeToggle />}
           {email ? (
             <>
               <span className="hidden text-sm text-mute sm:inline">{email}</span>

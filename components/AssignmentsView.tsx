@@ -1,12 +1,15 @@
 "use client";
-import { useMemo, useState, useEffect } from "react";
+import { useMemo, useEffect } from "react";
 import Filters, { FilterState } from "./Filters";
 import AssignmentCard from "./AssignmentCard";
+import { useUrlFilterState } from "@/lib/useUrlFilterState";
 
 export type A = { id: number; program: string | null; company: string; role: string; round: string | null; link: string | null };
 
+const DEFAULT_STATE: FilterState = { program: "All", company: "All", role: "All", round: "All", topic: "All", q: "" };
+
 export default function AssignmentsView({ initial }: { initial: A[] }) {
-  const [state, setState] = useState<FilterState>({ program: "All", company: "All", role: "All", round: "All", q: "" });
+  const [state, setState] = useUrlFilterState(DEFAULT_STATE);
 
   const filterData = useMemo(
     () => initial.map(x => ({ program: x.program || "", company: x.company, role: x.role })),

@@ -11,6 +11,7 @@ export async function POST(req: Request) {
     company: body.company ?? null,
     role:    body.role    ?? null,
     program: body.program ?? null,
+    topic:   body.topic   ?? null,
     path:    body.path    ?? null,
   });
   return NextResponse.json({ ok: true });

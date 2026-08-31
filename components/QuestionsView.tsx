@@ -2,13 +2,15 @@
 import { useMemo, useState, useEffect } from "react";
 import Filters, { FilterState } from "./Filters";
 import QuestionCard from "./QuestionCard";
+import { useUrlFilterState } from "@/lib/useUrlFilterState";
 
 export type Q = { id: number; program: string; company: string; role: string; round: string | null; question: string; related_topic: string | null };
 
 const PAGE = 30;
+const DEFAULT_STATE: FilterState = { program: "All", company: "All", role: "All", round: "All", topic: "All", q: "" };
 
 export default function QuestionsView({ initial }: { initial: Q[] }) {
-  const [state, setState] = useState<FilterState>({ program: "All", company: "All", role: "All", round: "All", q: "" });
+  const [state, setState] = useUrlFilterState(DEFAULT_STATE);
   const [visible, setVisible] = useState(PAGE);
 
   const filtered = useMemo(() => {
@@ -18,24 +20,30 @@ export default function QuestionsView({ initial }: { initial: Q[] }) {
       (state.company === "All" || x.company.trim() === state.company.trim()) &&
       (state.role === "All"    || x.role.trim()    === state.role.trim()) &&
       (state.round === "All"   || (x.round || "")  === state.round) &&
+      (state.topic === "All"   || (x.related_topic || "").trim() === state.topic) &&
       (!qLower || x.question.toLowerCase().includes(qLower) || (x.related_topic || "").toLowerCase().includes(qLower))
     );
   }, [initial, state]);
 
-  // Fire a view event when filter narrows to a specific company+role
+  // Fire a view event when filters narrow to a specific company+role, or to
+  // a topic on its own — whichever fields are actually set ride along on
+  // the same row so a "Google + Arrays" search is still one event, not two.
   useEffect(() => {
-    if (state.company !== "All" && state.role !== "All") {
-      fetch("/api/track", {
-        method: "POST",
-        headers: { "content-type": "application/json" },
-        body: JSON.stringify({
-          company: state.company, role: state.role,
-          program: state.program === "All" ? null : state.program,
-          path: "/",
-        }),
-      }).catch(() => {});
-    }
-  }, [state.company, state.role, state.program]);
+    const hasCompanyRole = state.company !== "All" && state.role !== "All";
+    const hasTopic = state.topic !== "All";
+    if (!hasCompanyRole && !hasTopic) return;
+    fetch("/api/track", {
+      method: "POST",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify({
+        company: state.company !== "All" ? state.company : null,
+        role:    state.role    !== "All" ? state.role    : null,
+        program: state.program !== "All" ? state.program : null,
+        topic:   state.topic   !== "All" ? state.topic   : null,
+        path: "/",
+      }),
+    }).catch(() => {});
+  }, [state.company, state.role, state.program, state.topic]);
 
   useEffect(() => setVisible(PAGE), [state]);
 
@@ -49,7 +57,7 @@ export default function QuestionsView({ initial }: { initial: Q[] }) {
             with <span className="font-bold">Interview Experiences</span>
           </h1>
         </div>
-        <Filters data={initial} state={state} setState={setState} />
+        <Filters data={initial} state={state} setState={setState} showTopic />
       </section>
 
       <section>

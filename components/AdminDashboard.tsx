@@ -8,7 +8,7 @@ import LearnerAccessManager from "./LearnerAccessManager";
 import VideoResourcesManager from "./VideoResourcesManager";
 
 type Stats = {
-  views: { user_email: string; company: string | null; role: string | null; program: string | null; created_at: string }[];
+  views: { user_email: string; company: string | null; role: string | null; program: string | null; topic: string | null; created_at: string }[];
   sessions: { user_email: string; duration_sec: number; started_at: string }[];
   admins: { email: string; added_at: string; added_by: string | null }[];
   packetViews: { user_email: string; created_at: string; role: string | null; yoe: string | null }[];
@@ -62,6 +62,20 @@ function buildCompanyRoleBreakdown(views: Stats["views"]) {
     const k = `${v.user_email}|${program}|${company}|${role}`;
     const e = m.get(k) || { email: v.user_email, program, company, role, views: 0, first: v.created_at, last: v.created_at };
     e.views++;
+    if (v.created_at < e.first) e.first = v.created_at;
+    if (v.created_at > e.last) e.last = v.created_at;
+    m.set(k, e);
+  });
+  return Array.from(m.values()).sort((a, b) => b.last.localeCompare(a.last));
+}
+function buildTopicBreakdown(views: Stats["views"]) {
+  const m = new Map<string, { email: string; topic: string; count: number; first: string; last: string }>();
+  views.forEach(v => {
+    if (!v.topic) return;
+    const topic = v.topic.trim();
+    const k = `${v.user_email}|${topic}`;
+    const e = m.get(k) || { email: v.user_email, topic, count: 0, first: v.created_at, last: v.created_at };
+    e.count++;
     if (v.created_at < e.first) e.first = v.created_at;
     if (v.created_at > e.last) e.last = v.created_at;
     m.set(k, e);
@@ -214,6 +228,7 @@ export default function AdminDashboard({ me }: { me: string }) {
   const [newAdmin, setNewAdmin] = useState("");
   const [loading, setLoading]   = useState(false);
   const [breakdownQuery, setBreakdownQuery] = useState("");
+  const [topicQuery, setTopicQuery] = useState("");
   const [packetQuery, setPacketQuery] = useState("");
   const [assignmentQuery, setAssignmentQuery] = useState("");
   const [videoQuery, setVideoQuery] = useState("");
@@ -293,6 +308,16 @@ export default function AdminDashboard({ me }: { me: string }) {
       r.program.toLowerCase().includes(qL)
     );
   }, [companyRoleBreakdownAll, breakdownQuery]);
+
+  // Grain is (email, topic) — separate from the company/role breakdown
+  // above since a topic search can happen with or without a company/role
+  // also picked, and either way it's worth seeing on its own.
+  const topicBreakdownAll = useMemo(() => data ? buildTopicBreakdown(data.views) : [], [data]);
+  const topicBreakdown = useMemo(() => {
+    const qL = topicQuery.trim().toLowerCase();
+    if (!qL) return topicBreakdownAll;
+    return topicBreakdownAll.filter(r => r.email.toLowerCase().includes(qL) || r.topic.toLowerCase().includes(qL));
+  }, [topicBreakdownAll, topicQuery]);
 
   const perUser = useMemo(() => data ? buildPerUser(data.views, data.sessions) : [], [data]);
 
@@ -418,6 +443,19 @@ export default function AdminDashboard({ me }: { me: string }) {
     downloadCsv(`admin-company-role-breakdown-${from}_to_${to}.csv`, rows);
   };
 
+  const exportTopicBreakdownCsv = async (from: string, to: string) => {
+    const d = await fetchStatsWindow(from, to);
+    if (!d) { alert("Couldn't load data for that range."); return; }
+    const rows: (string | number)[][] = [
+      ["Topic", "Email", "First time date", "Last time date", "Count"],
+      ...buildTopicBreakdown(d.views).map(r => [
+        r.topic, r.email,
+        new Date(r.first).toLocaleString(), new Date(r.last).toLocaleString(), r.count,
+      ]),
+    ];
+    downloadCsv(`admin-topic-breakdown-${from}_to_${to}.csv`, rows);
+  };
+
   const exportPacketBreakdownCsv = async (from: string, to: string) => {
     const d = await fetchStatsWindow(from, to);
     if (!d) { alert("Couldn't load data for that range."); return; }
@@ -530,8 +568,8 @@ export default function AdminDashboard({ me }: { me: string }) {
             </LineChart>
           </ResponsiveContainer>
         </Card>
-        <Card title="Daily searches — company & role" accent="dsml">
-          <p className="mb-2 text-xs text-mute">Learners who narrowed the filters to at least one specific company & role that day.</p>
+        <Card title="Daily searches — company/role/topic" accent="dsml">
+          <p className="mb-2 text-xs text-mute">Learners who narrowed the filters to a specific company & role, or a topic, that day.</p>
           <ResponsiveContainer width="100%" height={220}>
             <LineChart data={activityBuckets}>
               <CartesianGrid stroke="rgb(var(--edge))" vertical={false} />
@@ -610,6 +648,45 @@ export default function AdminDashboard({ me }: { me: string }) {
                   <td className="py-2 font-mono text-xs text-mute">{new Date(r.first).toLocaleString()}</td>
                   <td className="py-2 font-mono text-xs text-mute">{new Date(r.last).toLocaleString()}</td>
                   <td className="py-2 text-right font-mono text-xs">{r.views}</td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        </div>
+      </Card>
+
+      <Card title={`Topic breakdown (${topicBreakdown.length})`} accent="topic">
+        <div className="mb-4 flex flex-wrap items-center gap-2">
+          <input
+            value={topicQuery}
+            onChange={e => setTopicQuery(e.target.value)}
+            placeholder="filter by email or topic..."
+            className="min-w-[220px] flex-1 rounded-xl border border-edge bg-panel2 px-3 py-2 text-sm text-text placeholder:text-mute/60 focus:border-acad focus:outline-none"
+          />
+          <ExportButton defaultFrom={customFrom} defaultTo={customTo} onExport={exportTopicBreakdownCsv} />
+        </div>
+        <div className="max-h-[420px] overflow-y-auto">
+          <table className="w-full text-sm">
+            <thead className="sticky top-0 bg-panel text-left font-mono text-[11px] uppercase tracking-widest text-mute">
+              <tr>
+                <th className="py-2">Email</th>
+                <th className="py-2">Topic</th>
+                <th className="py-2">First searched</th>
+                <th className="py-2">Last searched</th>
+                <th className="py-2 text-right">Count</th>
+              </tr>
+            </thead>
+            <tbody className="divide-y divide-edge/60">
+              {topicBreakdown.length === 0 && (
+                <tr><td colSpan={5} className="py-4 text-mute">No topic searches yet in this window.</td></tr>
+              )}
+              {topicBreakdown.map(r => (
+                <tr key={`${r.email}|${r.topic}`}>
+                  <td className="py-2">{r.email}</td>
+                  <td className="py-2 text-mute">{r.topic}</td>
+                  <td className="py-2 font-mono text-xs text-mute">{new Date(r.first).toLocaleString()}</td>
+                  <td className="py-2 font-mono text-xs text-mute">{new Date(r.last).toLocaleString()}</td>
+                  <td className="py-2 text-right font-mono text-xs">{r.count}</td>
                 </tr>
               ))}
             </tbody>
@@ -873,6 +950,7 @@ const ACCENTS = {
   dsml:   { bar: "bg-dsml",   text: "text-dsml" },
   aiml:   { bar: "bg-aiml",   text: "text-aiml" },
   devops: { bar: "bg-devops", text: "text-devops" },
+  topic:  { bar: "bg-topic",  text: "text-topic" },
 } as const;
 type Accent = keyof typeof ACCENTS;
 

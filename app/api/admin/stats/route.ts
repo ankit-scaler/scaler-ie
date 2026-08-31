@@ -30,7 +30,7 @@ export async function GET(req: Request) {
   }
 
   const admin = supabaseAdmin();
-  let viewsQ           = admin.from("page_views").select("user_email,company,role,program,created_at").gte("created_at", since);
+  let viewsQ           = admin.from("page_views").select("user_email,company,role,program,topic,created_at").gte("created_at", since);
   let sessionsQ        = admin.from("sessions").select("user_email,duration_sec,started_at").gte("started_at", since);
   let packetViewsQ     = admin.from("packet_views").select("user_email,created_at,packets(role,yoe)").gte("created_at", since);
   let assignmentViewsQ = admin.from("assignment_views").select("user_email,created_at,assignments(program,company,role,round)").gte("created_at", since);

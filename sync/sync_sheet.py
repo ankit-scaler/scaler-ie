@@ -234,6 +234,21 @@ def build_daily_visits(sessions):
         rows.append([s["user_email"], date, time, minutes, _fmt_ts(s.get("last_beat_at"))])
     return rows
 
+def build_topic_breakdown(views):
+    m = {}
+    for v in views:
+        topic = (v.get("topic") or "").strip()
+        if not topic: continue
+        key = (v["user_email"], topic)
+        e = m.setdefault(key, {"count": 0, "first": v["created_at"], "last": v["created_at"]})
+        e["count"] += 1
+        if v["created_at"] < e["first"]: e["first"] = v["created_at"]
+        if v["created_at"] > e["last"]: e["last"] = v["created_at"]
+    rows = [["Topic", "Email", "First time date", "Last time date", "Count"]]
+    for (email, topic), e in sorted(m.items(), key=lambda kv: kv[1]["last"], reverse=True):
+        rows.append([topic, email, _fmt_ts(e["first"]), _fmt_ts(e["last"]), e["count"]])
+    return rows
+
 def build_company_role_breakdown(views):
     m = {}
     for v in views:
@@ -335,7 +350,7 @@ def sync_tracking_to_sheet(gc, supa):
     thirty_days_ago = (datetime.utcnow() - timedelta(days=30)).isoformat()
 
     for window_label, since in (("All time", None), ("Last 30d", thirty_days_ago)):
-        views             = select_paged(supa, "page_views", "user_email,company,role,program,created_at", since, "created_at")
+        views             = select_paged(supa, "page_views", "user_email,company,role,program,topic,created_at", since, "created_at")
         sessions          = select_paged(supa, "sessions", "user_email,duration_sec,started_at,last_beat_at", since, "started_at")
         packet_views      = select_paged(supa, "packet_views", "user_email,created_at,packets(role,yoe)", since, "created_at")
         assignment_views  = select_paged(supa, "assignment_views", "user_email,created_at,assignments(program,company,role,round)", since, "created_at")
@@ -345,6 +360,7 @@ def sync_tracking_to_sheet(gc, supa):
         write_subsheet(tsh, f"Daily Visits ({window_label})", build_daily_visits(sessions))
         write_subsheet(tsh, f"Usage Summary ({window_label})", build_usage_summary(views, sessions, packet_views))
         write_subsheet(tsh, f"Company & Role ({window_label})", build_company_role_breakdown(views))
+        write_subsheet(tsh, f"Topic Searches ({window_label})", build_topic_breakdown(views))
         write_subsheet(tsh, f"Packet Reads ({window_label})", build_packet_reads(packet_views))
         write_subsheet(tsh, f"Assignment Opens ({window_label})", build_assignment_opens(assignment_views))
         write_subsheet(tsh, f"Videos Watched ({window_label})", build_video_watches(video_views))
