@@ -44,6 +44,7 @@ CANONICAL_TOPICS = [
     "Distributed Systems",
     # Stack / technology specific
     "JavaScript & TypeScript",
+    "HTML & CSS",
     "React",
     "Node.js & Backend (MERN)",
     "Python",
@@ -52,9 +53,12 @@ CANONICAL_TOPICS = [
     "DevOps & Cloud",
     "Testing & QA",
     "Security",
+    "Excel",
+    "CRM",
     # Non-technical
     "Behavioral",
     "Case Study & Product Thinking",
+    "Aptitude & Guesstimates",
     # Fallback — never force a bad match into one of the buckets above.
     "Uncategorized",
 ]

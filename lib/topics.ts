@@ -20,6 +20,7 @@ export const CANONICAL_TOPICS = [
   "Networking",
   "Distributed Systems",
   "JavaScript & TypeScript",
+  "HTML & CSS",
   "React",
   "Node.js & Backend (MERN)",
   "Python",
@@ -28,7 +29,10 @@ export const CANONICAL_TOPICS = [
   "DevOps & Cloud",
   "Testing & QA",
   "Security",
+  "Excel",
+  "CRM",
   "Behavioral",
   "Case Study & Product Thinking",
+  "Aptitude & Guesstimates",
   "Uncategorized",
 ] as const;
