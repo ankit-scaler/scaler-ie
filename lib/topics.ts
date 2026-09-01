@@ -1,0 +1,33 @@
+// Mirrors sync/topics.py's CANONICAL_TOPICS. Keep these two lists in sync
+// by hand — there's no shared module between the Python sync scripts and
+// this Next.js app. Used by the admin question-topic editor's dropdown.
+export const CANONICAL_TOPICS = [
+  "Arrays & Strings",
+  "Linked Lists",
+  "Trees & Graphs",
+  "Dynamic Programming",
+  "Recursion & Backtracking",
+  "Sorting & Searching",
+  "Hashing",
+  "Stacks & Queues",
+  "Greedy Algorithms",
+  "Bit Manipulation",
+  "Math & Number Theory",
+  "System Design",
+  "Object-Oriented Design",
+  "Databases & SQL",
+  "Operating Systems",
+  "Networking",
+  "Distributed Systems",
+  "JavaScript & TypeScript",
+  "React",
+  "Node.js & Backend (MERN)",
+  "Python",
+  "Java & Spring",
+  "DevOps & Cloud",
+  "Testing & QA",
+  "Security",
+  "Behavioral",
+  "Case Study & Product Thinking",
+  "Uncategorized",
+] as const;

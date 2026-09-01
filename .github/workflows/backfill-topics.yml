@@ -1,9 +1,10 @@
 name: Backfill AI Topics
 on:
   workflow_dispatch: {}
-  # No schedule — this is the large one-off (or "catch up on anything the
-  # nightly cap skipped") classification pass. The nightly Daily Sheet Sync
-  # already handles new rows incrementally on its own.
+  # No schedule — this is the large one-off pass that reclassifies every
+  # question's AI topic from scratch (fixes bad classifications, not just
+  # unclassified rows). The nightly Daily Sheet Sync handles new rows
+  # incrementally on its own; no need to run this after every sync.
 
 jobs:
   backfill:

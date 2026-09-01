@@ -15,6 +15,10 @@ create table if not exists questions (
   -- AI-classified canonical topic (see sync/topics.py) — what the frontend
   -- filters/displays on; related_topic stays as the raw sheet value.
   topic_ai     text,
+  -- true once an admin hand-corrects topic_ai via "Fix a question's topic"
+  -- in Admin — backfill_topics.py skips these rows so a manual fix isn't
+  -- clobbered by the next full reclassification run.
+  topic_ai_manual boolean not null default false,
   fingerprint  text unique not null,   -- dedupe key
   synced_at    timestamptz default now()
 );

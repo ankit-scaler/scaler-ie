@@ -29,8 +29,9 @@ GEMINI_API_KEY = os.environ.get("GEMINI_API_KEY")
 # Normal nights only have a handful of new questions; this just bounds the
 # worst case (someone bulk-pastes thousands of rows into the sheet in one
 # day) so the job can't balloon in cost or runtime — any rows left over
-# just get picked up on the next run. The big one-off backfill of *existing*
-# unclassified rows belongs to backfill_topics.py (the Batches API), not here.
+# just get picked up on the next run. The big one-off reclassification of
+# *all* rows (new or already-classified) belongs to backfill_topics.py, not
+# here — run it by hand whenever classification quality needs a re-pass.
 CLASSIFY_CAP = 300
 # Opt-in "hard refresh": also deletes questions/assignments rows whose
 # fingerprint is no longer present in the sheet. Off by default — normal

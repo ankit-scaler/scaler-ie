@@ -47,7 +47,7 @@ CANONICAL_TOPICS = [
     "React",
     "Node.js & Backend (MERN)",
     "Python",
-    "Java",
+    "Java & Spring",
     "DevOps & Cloud",
     "Testing & QA",
     "Security",
@@ -74,15 +74,20 @@ CLASSIFY_MODEL = "gemini-3.5-flash-lite"
 
 CLASSIFY_SYSTEM_PROMPT = (
     "You classify a technical interview question into exactly one topic from "
-    "a fixed list. Pick the single closest match. If the question spans "
-    "several topics, pick the most central one. Only use \"Uncategorized\" "
-    "if truly nothing on the list fits — do not invent a new topic name.\n\n"
+    "a fixed list. Base your answer on what the QUESTION TEXT actually asks, "
+    "not on the sheet's raw topic tag — that tag is frequently wrong or just "
+    "the name of the course module the question was pulled from (e.g. a "
+    "JavaScript event-loop question tagged \"Java\"), so treat it only as a "
+    "weak hint, never as the answer. Pick the single closest match. If the "
+    "question spans several topics, pick the most central one. Only use "
+    "\"Uncategorized\" if truly nothing on the list fits — do not invent a "
+    "new topic name.\n\n"
     "Topics:\n" + "\n".join(f"- {t}" for t in CANONICAL_TOPICS)
 )
 
 
 def build_user_prompt(question: str, raw_topic: Optional[str]) -> str:
-    hint = f'\nSheet\'s raw "Related Topic" value (may be messy or wrong): {raw_topic}' if raw_topic else ""
+    hint = f'\nSheet\'s raw "Related Topic" value (weak hint only, often wrong): {raw_topic}' if raw_topic else ""
     # Folded into the single user turn (no separate system_instruction
     # param) so the exact same "contents" shape works for both a direct
     # generate_content call and an inline batch request.

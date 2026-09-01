@@ -55,6 +55,14 @@ export default function Filters({
     () => ["All", ...Array.from(new Set(filteredForCompany.map(d => d.related_topic || "").filter(Boolean))).sort()],
     [filteredForCompany]
   );
+  const topicCounts = useMemo(() => {
+    const m = new Map<string, number>();
+    filteredForCompany.forEach(d => {
+      const t = d.related_topic || "";
+      if (t) m.set(t, (m.get(t) || 0) + 1);
+    });
+    return m;
+  }, [filteredForCompany]);
 
   const Pill = ({ value, active, onClick }: { value: string; active: boolean; onClick: () => void }) => (
     <motion.button
@@ -67,8 +75,9 @@ export default function Filters({
     >{value}</motion.button>
   );
 
-  const Select = ({ label, value, options, onChange, accent }: {
+  const Select = ({ label, value, options, onChange, accent, optionLabel }: {
     label: string; value: string; options: string[]; onChange: (v: string) => void; accent: string;
+    optionLabel?: (o: string) => string;
   }) => (
     <label className="group flex min-w-0 flex-col gap-1.5">
       <span className={`font-mono text-[11px] font-semibold uppercase tracking-widest ${accent}`}>{label}</span>
@@ -78,7 +87,7 @@ export default function Filters({
           onChange={(e) => onChange(e.target.value)}
           className="w-full appearance-none rounded-xl border border-edge bg-panel px-3 py-2.5 pr-9 text-sm text-text transition-colors focus:border-acad focus:outline-none group-hover:border-text/40"
         >
-          {options.map(o => <option key={o} value={o} className="bg-panel">{o}</option>)}
+          {options.map(o => <option key={o} value={o} className="bg-panel">{optionLabel ? optionLabel(o) : o}</option>)}
         </select>
         <svg className="pointer-events-none absolute right-3 top-1/2 h-4 w-4 -translate-y-1/2 text-mute transition-colors duration-200 group-hover:text-text" viewBox="0 0 20 20" fill="currentColor">
           <path d="M5 8l5 5 5-5H5z" />
@@ -108,7 +117,8 @@ export default function Filters({
         )}
         {showTopic && (
           <Select label="Topic" value={state.topic} options={topics} accent="text-topic"
-            onChange={v => setState({ ...state, topic: v })} />
+            onChange={v => setState({ ...state, topic: v })}
+            optionLabel={o => o === "All" ? `All (${filteredForCompany.length})` : `${o} (${topicCounts.get(o) || 0})`} />
         )}
         <label className="group flex flex-col gap-1.5">
           <span className="font-mono text-[11px] font-semibold uppercase tracking-widest text-devops">Search</span>

@@ -6,6 +6,7 @@ import PacketLinksManager from "./PacketLinksManager";
 import AssignmentsManager from "./AssignmentsManager";
 import LearnerAccessManager from "./LearnerAccessManager";
 import VideoResourcesManager from "./VideoResourcesManager";
+import QuestionTopicsManager from "./QuestionTopicsManager";
 
 type Stats = {
   views: { user_email: string; company: string | null; role: string | null; program: string | null; topic: string | null; created_at: string }[];
@@ -887,6 +888,8 @@ export default function AdminDashboard({ me }: { me: string }) {
       <VideoResourcesManager />
 
       <AssignmentsManager />
+
+      <QuestionTopicsManager />
 
       <SectionLabel accent="devops">Access & admins</SectionLabel>
 

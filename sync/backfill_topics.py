@@ -1,22 +1,28 @@
 """
-One-off (or "run it again to catch up") bulk classification of every
-question whose topic_ai is still null, via the Gemini Batch API — 50%
-cheaper than direct calls and built for exactly this shape of job
-(thousands of independent short requests), unlike sync_sheet.py's nightly
-incremental classifier which intentionally only handles a small capped
-number of new rows per run so the daily job stays fast.
+Full reclassification of every question's AI topic, via direct (non-batch)
+Gemini calls run concurrently.
 
-Uses Gemini's *inline* batch requests, not the file/JSONL mode: the file
-mode supports a per-request "key" for reliable result mapping, but this
-project standardized on generate_content's plain request shape (see
-topics.py's docstring for why), and the inline path is what's confirmed to
-combine cleanly with structured output. Inline batch results come back
-positionally (no key), so this script keeps its own parallel list of
-question ids in submission order and zips them back up by index.
+Deliberately does NOT use the Gemini Batch API — that requires a billing
+tier this project's key doesn't have (confirmed via a real 400
+FAILED_PRECONDITION from client.batches.create() in production). Direct
+generate_content calls work fine on the same key (that's what the nightly
+sync's classify_new_topics already uses for new rows); this script just
+runs a lot of them concurrently to make reclassifying the whole table
+practical in one job.
 
-Safe to re-run any time: it only ever selects rows where topic_ai IS NULL,
-so it naturally catches anything the nightly cap left behind, or a row
-that errored last time.
+Reclassifies EVERY row except ones an admin has hand-corrected
+(topic_ai_manual = true, set by the "Fix a question's topic" editor in
+Admin), not just topic_ai IS NULL ones. This is intentional: the original
+bulk backfill trusted the sheet's raw topic tag for rows it could bucket
+by keyword alone, and that tag is sometimes flatly wrong (e.g. a
+JavaScript question tagged "Java" because that's the course module it
+came from). Re-running this is the fix — it always reads the actual
+question text (see topics.py's system prompt) — so it's safe and useful
+to run again any time classification quality looks off, not just to catch
+new rows.
+
+Safe to re-run any time: each non-manual row's topic_ai is simply
+overwritten with a fresh classification of the current question text.
 
 Run manually — locally with real env vars, or via the "Backfill AI Topics"
 GitHub Actions workflow (workflow_dispatch, no schedule).
@@ -25,35 +31,30 @@ Usage: python sync/backfill_topics.py
 Env: SUPABASE_URL, SUPABASE_SERVICE_KEY, GEMINI_API_KEY
 """
 import os, sys, time
+from concurrent.futures import ThreadPoolExecutor, as_completed
 from google import genai
+from google.genai import errors as genai_errors
 from supabase import create_client
-from topics import build_batch_request, CLASSIFY_MODEL, _parse_topic
+from topics import classify_one
 
 SUPA_URL = os.environ["SUPABASE_URL"]
 SUPA_KEY = os.environ["SUPABASE_SERVICE_KEY"]
 GEMINI_API_KEY = os.environ["GEMINI_API_KEY"]
 
 PAGE = 1000
-# Inline batch requests are capped at 20MB total, not by request count —
-# each request here is small (short question + the fixed topic-list system
-# prompt), but this stays well clear of that ceiling regardless of how long
-# individual questions get.
-BATCH_CHUNK = 2000
-POLL_SECS = 30
-COMPLETED_STATES = {
-    "JOB_STATE_SUCCEEDED", "JOB_STATE_PARTIALLY_SUCCEEDED",
-    "JOB_STATE_FAILED", "JOB_STATE_CANCELLED", "JOB_STATE_EXPIRED",
-}
-# Both of these still populate dest.inlined_responses per-item (success and
-# error entries side by side) — only the fully-failed/cancelled/expired
-# states below mean there's nothing usable to read back.
-READABLE_STATES = {"JOB_STATE_SUCCEEDED", "JOB_STATE_PARTIALLY_SUCCEEDED"}
+# Direct calls have per-minute rate limits (unlike the batch path), so this
+# stays modest rather than maxing out threads — a 429 costs more time
+# (retry + backoff) than a slightly lower concurrency would.
+WORKERS = 8
+MAX_RETRIES = 5
+PROGRESS_EVERY = 200
 
-def select_unclassified(supa):
+
+def select_all(supa):
     out, frm = [], 0
     while True:
         res = (supa.table("questions").select("id,question,related_topic")
-               .is_("topic_ai", "null").order("id")
+               .eq("topic_ai_manual", False).order("id")
                .range(frm, frm + PAGE - 1).execute())
         rows = res.data or []
         out.extend(rows)
@@ -62,59 +63,53 @@ def select_unclassified(supa):
         frm += PAGE
     return out
 
-def run_batch(client, supa, rows):
-    ids = [r["id"] for r in rows]
-    requests = [build_batch_request(r["question"], r.get("related_topic")) for r in rows]
 
-    batch_job = client.batches.create(
-        model=CLASSIFY_MODEL,
-        src=requests,
-        config={"display_name": "topic-classification-backfill"},
-    )
-    print(f"submitted batch {batch_job.name} ({len(requests)} requests)")
+def classify_with_retry(client, row):
+    delay = 2
+    for attempt in range(MAX_RETRIES):
+        try:
+            topic = classify_one(client, row["question"], row.get("related_topic"))
+            return row["id"], topic, None
+        except genai_errors.ClientError as e:
+            # 429s are the only case worth backing off and retrying —
+            # anything else (bad request, auth) will just fail again.
+            if getattr(e, "code", None) == 429 and attempt < MAX_RETRIES - 1:
+                time.sleep(delay)
+                delay *= 2
+                continue
+            return row["id"], None, str(e)
+        except Exception as e:
+            return row["id"], None, str(e)
+    return row["id"], None, "exhausted retries"
 
-    while batch_job.state.name not in COMPLETED_STATES:
-        print(f"  {batch_job.state.name}")
-        time.sleep(POLL_SECS)
-        batch_job = client.batches.get(name=batch_job.name)
-
-    if batch_job.state.name not in READABLE_STATES:
-        print(f"batch {batch_job.name} ended in state {batch_job.state.name}, skipping", file=sys.stderr)
-        return
-    if batch_job.state.name == "JOB_STATE_PARTIALLY_SUCCEEDED":
-        print(f"batch {batch_job.name}: partially succeeded — classifying what did, "
-              f"the rest stay null and get retried on the next run", file=sys.stderr)
-
-    responses = batch_job.dest.inlined_responses
-    if len(responses) != len(ids):
-        print(f"batch {batch_job.name}: expected {len(ids)} responses, got {len(responses)} — "
-              f"positional mapping may be off, aborting this chunk", file=sys.stderr)
-        return
-
-    classified, errors = 0, 0
-    for qid, item in zip(ids, responses):
-        if item.response:
-            topic = _parse_topic(item.response.text)
-            supa.table("questions").update({"topic_ai": topic}).eq("id", qid).execute()
-            classified += 1
-        else:
-            errors += 1
-            print(f"  question {qid}: {item.error}", file=sys.stderr)
-    print(f"batch {batch_job.name}: classified {classified}, {errors} error(s)")
 
 def main():
     supa = create_client(SUPA_URL, SUPA_KEY)
     client = genai.Client(api_key=GEMINI_API_KEY)
 
-    rows = select_unclassified(supa)
-    print(f"{len(rows)} question(s) need classification")
+    rows = select_all(supa)
+    print(f"{len(rows)} question(s) to (re)classify")
     if not rows:
         return
 
-    for i in range(0, len(rows), BATCH_CHUNK):
-        run_batch(client, supa, rows[i:i + BATCH_CHUNK])
+    classified, errors, done = 0, 0, 0
+    with ThreadPoolExecutor(max_workers=WORKERS) as pool:
+        futures = [pool.submit(classify_with_retry, client, r) for r in rows]
+        for fut in as_completed(futures):
+            qid, topic, err = fut.result()
+            done += 1
+            if err is not None:
+                errors += 1
+                print(f"  question {qid}: {err}", file=sys.stderr)
+            else:
+                supa.table("questions").update({"topic_ai": topic}).eq("id", qid).execute()
+                classified += 1
+            if done % PROGRESS_EVERY == 0:
+                print(f"  {done}/{len(rows)} processed ({classified} classified, {errors} errors)")
 
-    print("done at", time.strftime("%Y-%m-%dT%H:%M:%SZ", time.gmtime()))
+    print(f"done: classified {classified}, {errors} error(s), at "
+          f"{time.strftime('%Y-%m-%dT%H:%M:%SZ', time.gmtime())}")
+
 
 if __name__ == "__main__":
     main()
