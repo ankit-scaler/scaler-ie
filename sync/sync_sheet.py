@@ -9,6 +9,7 @@ from datetime import datetime, timedelta
 import gspread
 from google.oauth2.service_account import Credentials
 from supabase import create_client
+from topics import classify_one
 
 SHEET_ID = os.environ["SHEET_ID"]
 SUPA_URL = os.environ["SUPABASE_URL"]
@@ -21,6 +22,16 @@ LEARNERS_SHEET_ID = os.environ.get("LEARNERS_SHEET_ID")
 # Separate spreadsheet that tracking-insight snapshots get written OUT to
 # (Admin's CSV exports, mirrored into subsheets). Optional, same reasoning.
 TRACKING_SHEET_ID = os.environ.get("TRACKING_SHEET_ID")
+# AI topic classification (see topics.py, Gemini API). Optional, same
+# reasoning — skips cleanly so a missing key never blocks the actual sync.
+GEMINI_API_KEY = os.environ.get("GEMINI_API_KEY")
+# Caps how many rows one nightly run will classify directly (one call each).
+# Normal nights only have a handful of new questions; this just bounds the
+# worst case (someone bulk-pastes thousands of rows into the sheet in one
+# day) so the job can't balloon in cost or runtime — any rows left over
+# just get picked up on the next run. The big one-off backfill of *existing*
+# unclassified rows belongs to backfill_topics.py (the Batches API), not here.
+CLASSIFY_CAP = 300
 # Opt-in "hard refresh": also deletes questions/assignments rows whose
 # fingerprint is no longer present in the sheet. Off by default — normal
 # syncs only add/update, never delete, so an admin edit or a manual sheet
@@ -366,6 +377,39 @@ def sync_tracking_to_sheet(gc, supa):
         write_subsheet(tsh, f"Videos Watched ({window_label})", build_video_watches(video_views))
         write_subsheet(tsh, f"Feedback ({window_label})", build_feedback_rows(feedback))
 
+def classify_new_topics(supa):
+    """AI-classifies up to CLASSIFY_CAP questions whose topic_ai is still
+    null (new rows from this run, or anything missed previously) into the
+    canonical taxonomy — see topics.py. One direct API call per row: fine
+    for the handful of new questions a normal night adds. The large one-off
+    backfill of everything already unclassified is backfill_topics.py's job
+    (Batches API), not this — kept separate so a big backlog can never turn
+    the nightly sync into an hours-long run.
+    Skips cleanly if GEMINI_API_KEY isn't set."""
+    if not GEMINI_API_KEY:
+        print("GEMINI_API_KEY not set, skipping topic classification", file=sys.stderr)
+        return
+    from google import genai
+    client = genai.Client(api_key=GEMINI_API_KEY)
+
+    res = (supa.table("questions").select("id,question,related_topic")
+           .is_("topic_ai", "null").limit(CLASSIFY_CAP).execute())
+    rows = res.data or []
+    if not rows:
+        print("topic classification: nothing new to classify")
+        return
+
+    classified, errors = 0, 0
+    for r in rows:
+        try:
+            topic = classify_one(client, r["question"], r.get("related_topic"))
+            supa.table("questions").update({"topic_ai": topic}).eq("id", r["id"]).execute()
+            classified += 1
+        except Exception as e:
+            errors += 1
+            print(f"topic classification failed for question {r['id']}: {e}", file=sys.stderr)
+    print(f"topic classification: classified {classified}, {errors} error(s), {len(rows)} row(s) considered")
+
 def main():
     # Read-write (not read-only): the tracking-insights export below writes
     # subsheets back to a spreadsheet. Everything else here only ever reads.
@@ -420,6 +464,11 @@ def main():
         supa.table("questions").upsert(q_rows[i:i+500], on_conflict="fingerprint").execute()
     if FULL_RESYNC:
         delete_stale(supa, "questions", {r["fingerprint"] for r in q_rows})
+
+    try:
+        classify_new_topics(supa)
+    except Exception as e:
+        print(f"topic classification error: {e}", file=sys.stderr)
 
     # --- Assignments ---
     try:

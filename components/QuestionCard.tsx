@@ -21,10 +21,12 @@ export default function QuestionCard({
   q: {
     id: number; program: string; company: string; role: string;
     round: string | null; question: string; related_topic: string | null;
+    topic_ai: string | null;
   };
   index: number;
 }) {
   const prog = q.program in BAR ? q.program : "Academy";
+  const topic = q.topic_ai || q.related_topic;
   return (
     <motion.article
       initial={{ opacity: 0, y: 14 }}
@@ -43,10 +45,10 @@ export default function QuestionCard({
         {q.round && <span className="rounded-full border border-aiml/30 bg-aiml/10 px-3 py-1 text-aiml">{q.round}</span>}
       </div>
       <p className="whitespace-pre-wrap break-words text-base leading-relaxed text-text">{q.question}</p>
-      {q.related_topic && (
+      {topic && (
         <div className="mt-auto flex items-start gap-2 border-t border-edge/60 pt-3 text-sm text-mute">
           <span className={`shrink-0 font-mono uppercase tracking-widest text-[11px] ${TOPIC_TEXT[prog]}`}>Topic</span>
-          <span className="break-words text-text/80">{q.related_topic}</span>
+          <span className="break-words text-text/80">{topic}</span>
         </div>
       )}
     </motion.article>

@@ -4,14 +4,31 @@ import Filters, { FilterState } from "./Filters";
 import QuestionCard from "./QuestionCard";
 import { useUrlFilterState } from "@/lib/useUrlFilterState";
 
-export type Q = { id: number; program: string; company: string; role: string; round: string | null; question: string; related_topic: string | null };
+export type Q = {
+  id: number; program: string; company: string; role: string; round: string | null;
+  question: string; related_topic: string | null;
+  // AI-classified canonical topic (see sync/topics.py) — cleaned up from
+  // related_topic's raw, often-duplicated sheet text. Falls back to
+  // related_topic wherever a row hasn't been classified yet.
+  topic_ai: string | null;
+};
 
 const PAGE = 30;
 const DEFAULT_STATE: FilterState = { program: "All", company: "All", role: "All", round: "All", topic: "All", q: "" };
 
+const effectiveTopic = (x: Q) => (x.topic_ai || x.related_topic || "").trim();
+
 export default function QuestionsView({ initial }: { initial: Q[] }) {
   const [state, setState] = useUrlFilterState(DEFAULT_STATE);
   const [visible, setVisible] = useState(PAGE);
+
+  // Filters derives its Topic dropdown options from `related_topic` on
+  // whatever `data` it's given — feed it the clean effective value under
+  // that same key so the dropdown itself never shows raw duplicates.
+  const filterData = useMemo(
+    () => initial.map(x => ({ ...x, related_topic: effectiveTopic(x) })),
+    [initial]
+  );
 
   const filtered = useMemo(() => {
     const qLower = state.q.trim().toLowerCase();
@@ -20,8 +37,8 @@ export default function QuestionsView({ initial }: { initial: Q[] }) {
       (state.company === "All" || x.company.trim() === state.company.trim()) &&
       (state.role === "All"    || x.role.trim()    === state.role.trim()) &&
       (state.round === "All"   || (x.round || "")  === state.round) &&
-      (state.topic === "All"   || (x.related_topic || "").trim() === state.topic) &&
-      (!qLower || x.question.toLowerCase().includes(qLower) || (x.related_topic || "").toLowerCase().includes(qLower))
+      (state.topic === "All"   || effectiveTopic(x) === state.topic) &&
+      (!qLower || x.question.toLowerCase().includes(qLower) || effectiveTopic(x).toLowerCase().includes(qLower))
     );
   }, [initial, state]);
 
@@ -57,7 +74,7 @@ export default function QuestionsView({ initial }: { initial: Q[] }) {
             with <span className="font-bold">Interview Experiences</span>
           </h1>
         </div>
-        <Filters data={initial} state={state} setState={setState} showTopic />
+        <Filters data={filterData} state={state} setState={setState} showTopic />
       </section>
 
       <section>

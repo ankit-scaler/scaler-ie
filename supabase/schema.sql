@@ -12,11 +12,15 @@ create table if not exists questions (
   round        text,
   question     text not null,
   related_topic text,
+  -- AI-classified canonical topic (see sync/topics.py) — what the frontend
+  -- filters/displays on; related_topic stays as the raw sheet value.
+  topic_ai     text,
   fingerprint  text unique not null,   -- dedupe key
   synced_at    timestamptz default now()
 );
 create index if not exists idx_q_company_role on questions (lower(company), lower(role));
 create index if not exists idx_q_program on questions (program);
+create index if not exists idx_q_topic_ai on questions (topic_ai);
 
 create table if not exists assignments (
   id           bigserial primary key,

@@ -25,4 +25,5 @@ jobs:
           SUPABASE_URL:         ${{ secrets.SUPABASE_URL }}
           SUPABASE_SERVICE_KEY: ${{ secrets.SUPABASE_SERVICE_KEY }}
           GOOGLE_CREDS_JSON:    ${{ secrets.GOOGLE_CREDS_JSON }}
+          GEMINI_API_KEY:       ${{ secrets.GEMINI_API_KEY }}
           FULL_RESYNC:          ${{ github.event.inputs.full_resync }}

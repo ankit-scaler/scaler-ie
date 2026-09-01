@@ -1,13 +1,14 @@
 "use client";
-import { useMemo, useState } from "react";
+import { useMemo } from "react";
 import Link from "next/link";
 import { motion } from "framer-motion";
+import { useUrlParam } from "@/lib/useUrlParam";
 
 type Packet = { id: number; role: string; yoe: string; doc_link: string | null; sort_order: number; content_synced_at: string | null; hasVideoResources: boolean };
 
 export default function PacketsView({ packets }: { packets: Packet[] }) {
   const roles = useMemo(() => ["All", ...Array.from(new Set(packets.map(p => p.role)))], [packets]);
-  const [role, setRole] = useState("All");
+  const [role, setRole] = useUrlParam("role", "All");
   const filtered = role === "All" ? packets : packets.filter(p => p.role === role);
 
   return (
