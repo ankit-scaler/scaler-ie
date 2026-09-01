@@ -2,17 +2,38 @@ import { NextResponse } from "next/server";
 import { requireAdmin } from "@/lib/admin";
 import { supabaseAdmin } from "@/lib/supabase-server";
 
-// Table has 10k+ rows — never list it wholesale. Search-only: returns up to
-// 50 matches by id, company, role, or question text.
+// Table has 10k+ rows — never list it wholesale. Two modes:
+//  - `q` (keyword search): up to 50 matches by id, company, role, or
+//    question text, no pagination.
+//  - `topic` (browse by topic): every question currently holding that
+//    exact topic_ai, paginated — some topics have 1000+ rows.
 const RESULT_LIMIT = 50;
+const PAGE_SIZE = 50;
 
 export async function GET(req: Request) {
   if (!(await requireAdmin())) return NextResponse.json({ ok: false }, { status: 403 });
-  const q = new URL(req.url).searchParams.get("q")?.trim() || "";
-  if (!q) return NextResponse.json({ ok: true, rows: [] });
+  const params = new URL(req.url).searchParams;
+  const q = params.get("q")?.trim() || "";
+  const topic = params.get("topic")?.trim() || "";
+  const page = Math.max(0, Number(params.get("page")) || 0);
 
   const admin = supabaseAdmin();
   const cols = "id,company,role,program,question,related_topic,topic_ai";
+
+  if (topic) {
+    let query = admin.from("questions").select(cols, { count: "exact" }).eq("topic_ai", topic);
+    // Optional keyword narrows within the topic instead of the separate
+    // search path below — one ilike is safe here (single filter, no
+    // .or()), unlike the multi-column search which needs the workaround.
+    if (q) query = query.ilike("question", `%${q}%`);
+    const { data, count, error } = await query
+      .order("id", { ascending: false })
+      .range(page * PAGE_SIZE, page * PAGE_SIZE + PAGE_SIZE - 1);
+    if (error) return NextResponse.json({ ok: false, error: error.message }, { status: 400 });
+    return NextResponse.json({ ok: true, rows: data || [], total: count ?? 0, page, pageSize: PAGE_SIZE });
+  }
+
+  if (!q) return NextResponse.json({ ok: true, rows: [] });
 
   const asId = Number(q);
   if (Number.isInteger(asId) && String(asId) === q) {
