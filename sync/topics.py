@@ -48,6 +48,7 @@ CANONICAL_TOPICS = [
     "Node.js & Backend (MERN)",
     "Python",
     "Java & Spring",
+    "Machine Learning, AI & Data Science",
     "DevOps & Cloud",
     "Testing & QA",
     "Security",
