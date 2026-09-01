@@ -1,7 +1,6 @@
 import { NextResponse } from "next/server";
 import { requireAdmin } from "@/lib/admin";
 import { supabaseAdmin } from "@/lib/supabase-server";
-import { CANONICAL_TOPICS } from "@/lib/topics";
 
 // Table has 10k+ rows — never list it wholesale. Search-only: returns up to
 // 50 matches by id, company, role, or question text.
@@ -50,11 +49,18 @@ export async function POST(req: Request) {
   const id = Number(body.id);
   const topic_ai = body.topic_ai === null ? null : String(body.topic_ai || "");
   if (!id) return NextResponse.json({ ok: false, error: "Missing id." }, { status: 400 });
-  if (topic_ai !== null && !(CANONICAL_TOPICS as readonly string[]).includes(topic_ai)) {
-    return NextResponse.json({ ok: false, error: "Not a valid topic." }, { status: 400 });
-  }
 
   const admin = supabaseAdmin();
+  if (topic_ai !== null) {
+    // Validated against the live canonical_topics table, not a hardcoded
+    // list — so a topic added moments ago in Admin's topic manager is
+    // immediately assignable here too.
+    const { data: match, error: lookupErr } = await admin
+      .from("canonical_topics").select("name").eq("name", topic_ai).maybeSingle();
+    if (lookupErr) return NextResponse.json({ ok: false, error: lookupErr.message }, { status: 400 });
+    if (!match) return NextResponse.json({ ok: false, error: "Not a valid topic." }, { status: 400 });
+  }
+
   const { error } = await admin.from("questions").update({ topic_ai, topic_ai_manual: true }).eq("id", id);
   if (error) return NextResponse.json({ ok: false, error: error.message }, { status: 400 });
   return NextResponse.json({ ok: true });

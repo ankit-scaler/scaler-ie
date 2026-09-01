@@ -9,7 +9,7 @@ from datetime import datetime, timedelta
 import gspread
 from google.oauth2.service_account import Credentials
 from supabase import create_client
-from topics import classify_one
+from topics import load_classifier
 
 SHEET_ID = os.environ["SHEET_ID"]
 SUPA_URL = os.environ["SUPABASE_URL"]
@@ -392,6 +392,7 @@ def classify_new_topics(supa):
         return
     from google import genai
     client = genai.Client(api_key=GEMINI_API_KEY)
+    classifier = load_classifier(supa)
 
     res = (supa.table("questions").select("id,question,related_topic")
            .is_("topic_ai", "null").limit(CLASSIFY_CAP).execute())
@@ -403,7 +404,7 @@ def classify_new_topics(supa):
     classified, errors = 0, 0
     for r in rows:
         try:
-            topic = classify_one(client, r["question"], r.get("related_topic"))
+            topic = classifier.classify_one(client, r["question"], r.get("related_topic"))
             supa.table("questions").update({"topic_ai": topic}).eq("id", r["id"]).execute()
             classified += 1
         except Exception as e:

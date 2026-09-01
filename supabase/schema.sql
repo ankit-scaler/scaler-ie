@@ -26,6 +26,20 @@ create index if not exists idx_q_company_role on questions (lower(company), lowe
 create index if not exists idx_q_program on questions (program);
 create index if not exists idx_q_topic_ai on questions (topic_ai);
 
+-- The live topic_ai taxonomy — read at runtime by both Admin's topic
+-- manager and the nightly Gemini classifier (sync/topics.py), so adding,
+-- renaming, or deleting a topic in Admin never needs a code change.
+-- See supabase/add_canonical_topics.sql for the rename/delete RPC
+-- functions (rename_canonical_topic, delete_canonical_topic,
+-- topic_ai_counts) — a rename/delete goes through those, never a plain
+-- UPDATE/DELETE, so `questions.topic_ai` can't end up pointing at a name
+-- this table no longer has.
+create table if not exists canonical_topics (
+  id         bigint generated always as identity primary key,
+  name       text not null unique,
+  created_at timestamptz not null default now()
+);
+
 create table if not exists assignments (
   id           bigserial primary key,
   program      text,

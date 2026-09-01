@@ -35,7 +35,7 @@ from concurrent.futures import ThreadPoolExecutor, as_completed
 from google import genai
 from google.genai import errors as genai_errors
 from supabase import create_client
-from topics import classify_one
+from topics import load_classifier
 
 SUPA_URL = os.environ["SUPABASE_URL"]
 SUPA_KEY = os.environ["SUPABASE_SERVICE_KEY"]
@@ -64,11 +64,11 @@ def select_all(supa):
     return out
 
 
-def classify_with_retry(client, row):
+def classify_with_retry(client, classifier, row):
     delay = 2
     for attempt in range(MAX_RETRIES):
         try:
-            topic = classify_one(client, row["question"], row.get("related_topic"))
+            topic = classifier.classify_one(client, row["question"], row.get("related_topic"))
             return row["id"], topic, None
         except genai_errors.ClientError as e:
             # 429s are the only case worth backing off and retrying —
@@ -86,6 +86,7 @@ def classify_with_retry(client, row):
 def main():
     supa = create_client(SUPA_URL, SUPA_KEY)
     client = genai.Client(api_key=GEMINI_API_KEY)
+    classifier = load_classifier(supa)
 
     rows = select_all(supa)
     print(f"{len(rows)} question(s) to (re)classify")
@@ -94,7 +95,7 @@ def main():
 
     classified, errors, done = 0, 0, 0
     with ThreadPoolExecutor(max_workers=WORKERS) as pool:
-        futures = [pool.submit(classify_with_retry, client, r) for r in rows]
+        futures = [pool.submit(classify_with_retry, client, classifier, r) for r in rows]
         for fut in as_completed(futures):
             qid, topic, err = fut.result()
             done += 1

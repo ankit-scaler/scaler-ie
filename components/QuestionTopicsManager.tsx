@@ -1,6 +1,5 @@
 "use client";
-import { useState } from "react";
-import { CANONICAL_TOPICS } from "@/lib/topics";
+import { useEffect, useState } from "react";
 
 type Row = {
   id: number; company: string; role: string; program: string | null;
@@ -14,6 +13,13 @@ export default function QuestionTopicsManager() {
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [savingId, setSavingId] = useState<number | null>(null);
+  const [topicNames, setTopicNames] = useState<string[]>([]);
+
+  useEffect(() => {
+    fetch("/api/admin/topics").then(r => r.json()).then(j => {
+      if (j.ok) setTopicNames(j.topics.map((t: { name: string }) => t.name));
+    }).catch(() => {});
+  }, []);
 
   const search = async () => {
     const qL = query.trim();
@@ -92,7 +98,7 @@ export default function QuestionTopicsManager() {
                   className="rounded-lg border border-edge bg-panel px-2 py-1 text-sm text-text focus:border-acad focus:outline-none disabled:opacity-50"
                 >
                   <option value="">— none —</option>
-                  {CANONICAL_TOPICS.map(t => <option key={t} value={t}>{t}</option>)}
+                  {topicNames.map(t => <option key={t} value={t}>{t}</option>)}
                 </select>
                 {savingId === r.id && <span className="text-xs text-mute">Saving…</span>}
               </div>
