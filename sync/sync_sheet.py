@@ -4,7 +4,7 @@ Reads 4 Question tabs + Assignments tab, dedupes, upserts by fingerprint.
 Also writes tracking-insights snapshots (the same breakdowns Admin can
 export as CSV) out to subsheets of a separate tracking spreadsheet.
 """
-import os, json, hashlib, sys, re
+import os, json, hashlib, sys, re, time
 from datetime import datetime, timedelta
 import gspread
 from google.oauth2.service_account import Credentials
@@ -33,6 +33,8 @@ GEMINI_API_KEY = os.environ.get("GEMINI_API_KEY")
 # *all* rows (new or already-classified) belongs to backfill_topics.py, not
 # here — run it by hand whenever classification quality needs a re-pass.
 CLASSIFY_CAP = 300
+# Matches backfill_topics.py's MAX_RETRIES — same 429 backoff, same ceiling.
+CLASSIFY_MAX_RETRIES = 5
 # Opt-in "hard refresh": also deletes questions/assignments rows whose
 # fingerprint is no longer present in the sheet. Off by default — normal
 # syncs only add/update, never delete, so an admin edit or a manual sheet
@@ -378,6 +380,30 @@ def sync_tracking_to_sheet(gc, supa):
         write_subsheet(tsh, f"Videos Watched ({window_label})", build_video_watches(video_views))
         write_subsheet(tsh, f"Feedback ({window_label})", build_feedback_rows(feedback))
 
+def classify_one_with_retry(client, classifier, row):
+    """Same 429 backoff as backfill_topics.py's classify_with_retry — a
+    normal night is usually a handful of rows, but a bulk sheet paste can
+    push classify_new_topics past Gemini's per-minute rate limit, and
+    without a retry a single 429 permanently strands that row's topic_ai at
+    null (it falls back to displaying the sheet's raw topic tag on the
+    public site — see effectiveTopic() in QuestionsView.tsx — until some
+    later run happens to pick it back up)."""
+    from google.genai import errors as genai_errors
+    delay = 2
+    for attempt in range(CLASSIFY_MAX_RETRIES):
+        try:
+            return classifier.classify_one(client, row["question"], row.get("related_topic")), None
+        except genai_errors.ClientError as e:
+            if getattr(e, "code", None) == 429 and attempt < CLASSIFY_MAX_RETRIES - 1:
+                time.sleep(delay)
+                delay *= 2
+                continue
+            return None, str(e)
+        except Exception as e:
+            return None, str(e)
+    return None, "exhausted retries"
+
+
 def classify_new_topics(supa):
     """AI-classifies up to CLASSIFY_CAP questions whose topic_ai is still
     null (new rows from this run, or anything missed previously) into the
@@ -403,13 +429,13 @@ def classify_new_topics(supa):
 
     classified, errors = 0, 0
     for r in rows:
-        try:
-            topic = classifier.classify_one(client, r["question"], r.get("related_topic"))
-            supa.table("questions").update({"topic_ai": topic}).eq("id", r["id"]).execute()
-            classified += 1
-        except Exception as e:
+        topic, err = classify_one_with_retry(client, classifier, r)
+        if err is not None:
             errors += 1
-            print(f"topic classification failed for question {r['id']}: {e}", file=sys.stderr)
+            print(f"topic classification failed for question {r['id']}: {err}", file=sys.stderr)
+            continue
+        supa.table("questions").update({"topic_ai": topic}).eq("id", r["id"]).execute()
+        classified += 1
     print(f"topic classification: classified {classified}, {errors} error(s), {len(rows)} row(s) considered")
 
 def main():
