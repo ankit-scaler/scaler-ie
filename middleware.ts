@@ -14,6 +14,7 @@ export async function middleware(req: NextRequest) {
       },
     }
   );
+  
   const { data: { user } } = await supabase.auth.getUser();
 
   const { pathname, search } = req.nextUrl;
