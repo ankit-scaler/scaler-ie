@@ -42,6 +42,33 @@ CLASSIFY_MAX_RETRIES = 5
 # refresh, or the workflow_dispatch "full_resync" checkbox.
 FULL_RESYNC = os.environ.get("FULL_RESYNC", "").strip().lower() == "true"
 
+# Google's Sheets API returns transient 429/5xx errors under load (the
+# nightly cron has hit "[503]: The service is currently unavailable" on a
+# bare gc.open_by_key). None of these are our fault and they clear on their
+# own within seconds, so wrap every Sheets network call that would abort the
+# job in this exponential backoff instead of failing the whole run.
+GS_MAX_RETRIES = 5
+GS_RETRY_CODES = {429, 500, 502, 503, 504}
+
+def gs_retry(fn, *args, **kwargs):
+    """Call fn(*args, **kwargs), retrying transient gspread APIErrors with
+    exponential backoff (2s, 4s, 8s, ...). Re-raises anything else, and
+    re-raises the transient error too once retries are exhausted."""
+    delay = 2
+    for attempt in range(GS_MAX_RETRIES):
+        try:
+            return fn(*args, **kwargs)
+        except gspread.exceptions.APIError as e:
+            code = getattr(e, "code", None) or getattr(
+                getattr(e, "response", None), "status_code", None)
+            if code in GS_RETRY_CODES and attempt < GS_MAX_RETRIES - 1:
+                print(f"sheets API {code}, retrying in {delay}s "
+                      f"(attempt {attempt + 1}/{GS_MAX_RETRIES})", file=sys.stderr)
+                time.sleep(delay)
+                delay *= 2
+                continue
+            raise
+
 def delete_stale(supa, table, kept_fingerprints, only_where_null=None):
     """Deletes rows in `table` whose fingerprint isn't in kept_fingerprints.
     Only called under FULL_RESYNC, after a successful fresh read+upsert —
@@ -170,8 +197,9 @@ def sync_allowed_learners(gc, supa):
         print("LEARNERS_SHEET_ID not set, skipping learner allow-list sync", file=sys.stderr)
         return
     try:
-        ws = gc.open_by_key(LEARNERS_SHEET_ID).worksheet(LEARNERS_TAB)
-        all_vals = ws.get_all_values()
+        lsh = gs_retry(gc.open_by_key, LEARNERS_SHEET_ID)
+        ws = gs_retry(lsh.worksheet, LEARNERS_TAB)
+        all_vals = gs_retry(ws.get_all_values)
     except Exception as e:
         print(f"learner allow-list: failed to read sheet, skipping: {e}", file=sys.stderr)
         return
@@ -337,13 +365,13 @@ def build_feedback_rows(feedback):
 
 def write_subsheet(tsh, title, rows):
     try:
-        ws = tsh.worksheet(title)
-        ws.clear()
+        ws = gs_retry(tsh.worksheet, title)
+        gs_retry(ws.clear)
     except gspread.exceptions.WorksheetNotFound:
         cols = len(rows[0]) if rows else 8
-        ws = tsh.add_worksheet(title=title, rows=max(len(rows) + 10, 100), cols=max(cols + 2, 8))
+        ws = gs_retry(tsh.add_worksheet, title=title, rows=max(len(rows) + 10, 100), cols=max(cols + 2, 8))
     if rows:
-        ws.update(rows)
+        gs_retry(ws.update, rows)
     print(f"tracking sheet: wrote {max(len(rows) - 1, 0)} row(s) to {title!r}")
 
 def sync_tracking_to_sheet(gc, supa):
@@ -356,7 +384,7 @@ def sync_tracking_to_sheet(gc, supa):
         print("TRACKING_SHEET_ID not set, skipping tracking-insights export", file=sys.stderr)
         return
     try:
-        tsh = gc.open_by_key(TRACKING_SHEET_ID)
+        tsh = gs_retry(gc.open_by_key, TRACKING_SHEET_ID)
     except Exception as e:
         print(f"tracking sheet: failed to open, skipping: {e}", file=sys.stderr)
         return
@@ -445,7 +473,7 @@ def main():
         CREDS, scopes=["https://www.googleapis.com/auth/spreadsheets"]
     )
     gc = gspread.authorize(creds)
-    sh = gc.open_by_key(SHEET_ID)
+    sh = gs_retry(gc.open_by_key, SHEET_ID)
     supa = create_client(SUPA_URL, SUPA_KEY)
 
     # --- Allowed learners (access gate) ---
@@ -455,11 +483,11 @@ def main():
     q_rows = []
     for tab_name, meta in QUESTION_TABS.items():
         try:
-            ws = sh.worksheet(tab_name)
+            ws = gs_retry(sh.worksheet, tab_name)
         except Exception as e:
             print(f"skip {tab_name}: {e}", file=sys.stderr); continue
 
-        all_vals = ws.get_all_values()
+        all_vals = gs_retry(ws.get_all_values)
         if not all_vals: continue
         headers = dedupe_headers(all_vals[0])
         for raw in all_vals[1:]:
@@ -500,8 +528,8 @@ def main():
 
     # --- Assignments ---
     try:
-        ws = sh.worksheet(ASSIGNMENT_TAB)
-        all_vals = ws.get_all_values()
+        ws = gs_retry(sh.worksheet, ASSIGNMENT_TAB)
+        all_vals = gs_retry(ws.get_all_values)
         if all_vals:
             headers = dedupe_headers(all_vals[0])
             link_col_idx = None
