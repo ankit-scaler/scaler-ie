@@ -14,6 +14,7 @@ export async function isAllowedToSignIn(email: string) {
   return !!asAdmin || !!asLearner;
 }
 
+
 // Only a same-origin relative path is a safe redirect target — anything else
 // (a full URL, a protocol-relative "//evil.com") could send a signed-in user
 // off-site, so we fall back to "/" instead.

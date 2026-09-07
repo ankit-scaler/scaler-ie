@@ -9,6 +9,11 @@ create table if not exists canonical_topics (
   created_at timestamptz not null default now()
 );
 
+-- RLS on, no policies: only the service key touches this table (the admin
+-- API routes and sync/topics.py), and the service key bypasses RLS. Without
+-- this line the table is world-writable through the public anon key.
+alter table canonical_topics enable row level security;
+
 -- Seed with the topics already in use as of this migration (mirrors the
 -- CANONICAL_TOPICS list previously hardcoded in sync/topics.py / lib/topics.ts).
 insert into canonical_topics (name) values

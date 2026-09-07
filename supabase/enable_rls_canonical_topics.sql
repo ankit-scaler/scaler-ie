@@ -1,0 +1,17 @@
+-- add_canonical_topics.sql created `canonical_topics` without the
+-- `enable row level security` line every other table in this project gets
+-- (schema.sql:181-192), so Supabase's Security Advisor flags it as an error:
+-- with RLS off, the table is reachable through PostgREST by anyone holding
+-- the anon key -- which is public by definition, since it ships to the
+-- browser as NEXT_PUBLIC_SUPABASE_ANON_KEY. That means read *and* write:
+-- the topic taxonomy could be renamed, seeded with junk, or deleted
+-- outright by anyone who opened devtools.
+--
+-- No policies are added on purpose. Nothing in the browser reads this table:
+-- every caller goes through the service key, which bypasses RLS entirely --
+-- app/api/admin/topics/route.ts and app/api/admin/questions/route.ts via
+-- supabaseAdmin(), and sync/topics.py's fetch_canonical_topics() via the
+-- GitHub Actions SUPABASE_SERVICE_KEY. So "RLS on, zero policies" is the
+-- correct end state here: deny-all to anon and authenticated, unchanged for
+-- the two server-side callers.
+alter table canonical_topics enable row level security;
