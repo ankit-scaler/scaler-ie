@@ -1,6 +1,14 @@
 import { NextResponse } from "next/server";
 import { supabaseServer, supabaseAdmin } from "@/lib/supabase-server";
 
+// Internal Scaler accounts (content team, admins, anyone poking at the site)
+// aren't learners, so their activity must not inflate any tracking number.
+// Excluded at read time rather than at write time: the track/* routes keep
+// recording every row, so this stays reversible and no history is thrown
+// away. sync/sync_sheet.py applies the same exclusion, so the tracking
+// spreadsheet and this tab never disagree.
+const INTERNAL_EMAIL_PATTERN = "%@scaler.com";
+
 async function isAdmin(email: string | undefined) {
   if (!email) return false;
   const admin = supabaseAdmin();
@@ -30,12 +38,12 @@ export async function GET(req: Request) {
   }
 
   const admin = supabaseAdmin();
-  let viewsQ           = admin.from("page_views").select("user_email,company,role,program,topic,created_at").gte("created_at", since);
-  let sessionsQ        = admin.from("sessions").select("user_email,duration_sec,started_at").gte("started_at", since);
-  let packetViewsQ     = admin.from("packet_views").select("user_email,created_at,packets(role,yoe)").gte("created_at", since);
-  let assignmentViewsQ = admin.from("assignment_views").select("user_email,created_at,assignments(program,company,role,round)").gte("created_at", since);
-  let videoViewsQ      = admin.from("video_resource_views").select("user_email,created_at,video_resources(topic,packets(role,yoe))").gte("created_at", since);
-  let feedbackQ        = admin.from("feedback").select("user_email,platform_rating,usefulness_rating,feedback_text,created_at").gte("created_at", since);
+  let viewsQ           = admin.from("page_views").select("user_email,company,role,program,topic,created_at").gte("created_at", since).not("user_email", "ilike", INTERNAL_EMAIL_PATTERN);
+  let sessionsQ        = admin.from("sessions").select("user_email,duration_sec,started_at").gte("started_at", since).not("user_email", "ilike", INTERNAL_EMAIL_PATTERN);
+  let packetViewsQ     = admin.from("packet_views").select("user_email,created_at,packets(role,yoe)").gte("created_at", since).not("user_email", "ilike", INTERNAL_EMAIL_PATTERN);
+  let assignmentViewsQ = admin.from("assignment_views").select("user_email,created_at,assignments(program,company,role,round)").gte("created_at", since).not("user_email", "ilike", INTERNAL_EMAIL_PATTERN);
+  let videoViewsQ      = admin.from("video_resource_views").select("user_email,created_at,video_resources(topic,packets(role,yoe))").gte("created_at", since).not("user_email", "ilike", INTERNAL_EMAIL_PATTERN);
+  let feedbackQ        = admin.from("feedback").select("user_email,platform_rating,usefulness_rating,feedback_text,created_at").gte("created_at", since).not("user_email", "ilike", INTERNAL_EMAIL_PATTERN);
   if (until) {
     viewsQ           = viewsQ.lte("created_at", until);
     sessionsQ        = sessionsQ.lte("started_at", until);

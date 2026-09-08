@@ -25,6 +25,13 @@ TRACKING_SHEET_ID = os.environ.get("TRACKING_SHEET_ID")
 # AI topic classification (see topics.py, Gemini API). Optional, same
 # reasoning — skips cleanly so a missing key never blocks the actual sync.
 GEMINI_API_KEY = os.environ.get("GEMINI_API_KEY")
+# Internal Scaler accounts (content team, admins, anyone poking at the site)
+# aren't learners, so their activity must not inflate any tracking number.
+# Excluded at read time rather than at write time: the app keeps recording
+# every row, so this stays reversible and no history is thrown away. The
+# Admin stats API (app/api/admin/stats/route.ts) applies the same exclusion,
+# so this spreadsheet and the Tracking tab never disagree.
+INTERNAL_EMAIL_PATTERN = "%@scaler.com"
 # Caps how many rows one nightly run will classify directly (one call each).
 # Normal nights only have a handful of new questions; this just bounds the
 # worst case (someone bulk-pastes thousands of rows into the sheet in one
@@ -231,11 +238,14 @@ def sync_allowed_learners(gc, supa):
 
 def select_paged(supa, table, select_cols, since_iso, date_col):
     """Same idea as select_all, but with an optional `since` lower bound and
-    an explicit order so pagination across pages stays consistent."""
+    an explicit order so pagination across pages stays consistent. Every
+    caller is a tracking table keyed by user_email, so internal Scaler
+    accounts are dropped here once instead of in each builder below."""
     PAGE = 1000
     out, frm = [], 0
     while True:
         q = supa.table(table).select(select_cols).order("id")
+        q = q.not_.ilike("user_email", INTERNAL_EMAIL_PATTERN)
         if since_iso:
             q = q.gte(date_col, since_iso)
         res = q.range(frm, frm + PAGE - 1).execute()
