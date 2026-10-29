@@ -38,11 +38,12 @@ export default function Header() {
     return () => sub.subscription.unsubscribe();
   }, []);
 
-  const tab = (href: string, label: string) => {
-    const active = path === href;
+  const tab = (href: string, label: string, external = false) => {
+    const active = !external && path === href;
     return (
       <Link
         href={href}
+        {...(external ? { target: "_blank", rel: "noopener noreferrer" } : {})}
         className={`group relative whitespace-nowrap rounded-full px-4 py-1.5 text-sm transition-colors duration-200 ${
           active ? "text-text" : "text-mute hover:text-text"
         }`}
@@ -78,6 +79,7 @@ export default function Header() {
             {tab("/assignments", "Assignments")}
             {tab("/packets", "Prepare for Trending roles")}
             {isAdmin && tab("/admin", "Admin")}
+            {tab("https://cortex-by-scaler.up.railway.app/login", "Revise with Crash Course", true)}
           </nav>
         )}
         <div className="flex items-center gap-3">
