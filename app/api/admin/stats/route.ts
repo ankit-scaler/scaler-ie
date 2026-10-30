@@ -38,12 +38,13 @@ export async function GET(req: Request) {
   }
 
   const admin = supabaseAdmin();
-  let viewsQ           = admin.from("page_views").select("user_email,company,role,program,topic,created_at").gte("created_at", since).not("user_email", "ilike", INTERNAL_EMAIL_PATTERN);
+  let viewsQ           = admin.from("page_views").select("user_email,company,role,program,topic,path,created_at").gte("created_at", since).not("user_email", "ilike", INTERNAL_EMAIL_PATTERN);
   let sessionsQ        = admin.from("sessions").select("user_email,duration_sec,started_at").gte("started_at", since).not("user_email", "ilike", INTERNAL_EMAIL_PATTERN);
   let packetViewsQ     = admin.from("packet_views").select("user_email,created_at,packets(role,yoe)").gte("created_at", since).not("user_email", "ilike", INTERNAL_EMAIL_PATTERN);
   let assignmentViewsQ = admin.from("assignment_views").select("user_email,created_at,assignments(program,company,role,round)").gte("created_at", since).not("user_email", "ilike", INTERNAL_EMAIL_PATTERN);
   let videoViewsQ      = admin.from("video_resource_views").select("user_email,created_at,video_resources(topic,packets(role,yoe))").gte("created_at", since).not("user_email", "ilike", INTERNAL_EMAIL_PATTERN);
   let feedbackQ        = admin.from("feedback").select("user_email,platform_rating,usefulness_rating,feedback_text,created_at").gte("created_at", since).not("user_email", "ilike", INTERNAL_EMAIL_PATTERN);
+  let jobAppliesQ      = admin.from("job_applies").select("user_email,job_id,created_at").gte("created_at", since).not("user_email", "ilike", INTERNAL_EMAIL_PATTERN);
   if (until) {
     viewsQ           = viewsQ.lte("created_at", until);
     sessionsQ        = sessionsQ.lte("started_at", until);
@@ -51,9 +52,10 @@ export async function GET(req: Request) {
     assignmentViewsQ = assignmentViewsQ.lte("created_at", until);
     videoViewsQ      = videoViewsQ.lte("created_at", until);
     feedbackQ        = feedbackQ.lte("created_at", until);
+    jobAppliesQ      = jobAppliesQ.lte("created_at", until);
   }
 
-  const [views, sessions, admins, packetViews, assignmentViews, videoViews, feedback] = await Promise.all([
+  const [views, sessions, admins, packetViews, assignmentViews, videoViews, feedback, jobApplies] = await Promise.all([
     viewsQ,
     sessionsQ,
     admin.from("admins").select("email,added_at,added_by").order("added_at", { ascending: true }),
@@ -61,6 +63,7 @@ export async function GET(req: Request) {
     assignmentViewsQ,
     videoViewsQ,
     feedbackQ,
+    jobAppliesQ,
   ]);
 
   return NextResponse.json({
@@ -87,5 +90,6 @@ export async function GET(req: Request) {
       yoe: r.video_resources?.packets?.yoe ?? null,
     })),
     feedback: feedback.data || [],
+    jobApplies: jobApplies.data || [],
   });
 }
