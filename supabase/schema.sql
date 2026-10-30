@@ -172,6 +172,21 @@ create index if not exists idx_av_email   on assignment_views (user_email);
 create index if not exists idx_av_assignment on assignment_views (assignment_id);
 create index if not exists idx_av_created on assignment_views (created_at desc);
 
+-- ============ JOBS ANALYTICS ============
+-- Deliberately NOT a foreign key to jobs(id): job rows get pruned every
+-- 30-70 days (see sync/sync_jobs.py), but this table's whole point is a
+-- permanent click-history log — an `on delete cascade` would silently
+-- erase analytics history as listings age out.
+create table if not exists job_applies (
+  id         bigserial primary key,
+  user_email text not null,
+  job_id     bigint not null,
+  created_at timestamptz default now()
+);
+create index if not exists idx_ja_email   on job_applies (user_email);
+create index if not exists idx_ja_job     on job_applies (job_id);
+create index if not exists idx_ja_created on job_applies (created_at desc);
+
 -- ============ FEEDBACK ============
 create table if not exists feedback (
   id                bigserial primary key,
@@ -210,6 +225,7 @@ alter table assignment_views     enable row level security;
 alter table allowed_learners     enable row level security;
 alter table feedback             enable row level security;
 alter table jobs                 enable row level security;
+alter table job_applies          enable row level security;
 
 -- Policies aren't CREATE-IF-NOT-EXISTS-able in Postgres, and the Supabase SQL editor
 -- runs a pasted script as one transaction — one "already exists" error rolls back
@@ -227,12 +243,14 @@ drop policy if exists "own sessions rw" on sessions;
 drop policy if exists "admins read self" on admins;
 drop policy if exists "insert own feedback" on feedback;
 drop policy if exists "read jobs" on jobs;
+drop policy if exists "insert own job apply" on job_applies;
 
 create policy "read packets" on packets for select using (auth.role() = 'authenticated');
 create policy "insert own packet view" on packet_views for insert with check (auth.jwt() ->> 'email' = user_email);
 create policy "read video resources" on video_resources for select using (auth.role() = 'authenticated');
 create policy "insert own video resource view" on video_resource_views for insert with check (auth.jwt() ->> 'email' = user_email);
 create policy "insert own assignment view" on assignment_views for insert with check (auth.jwt() ->> 'email' = user_email);
+create policy "insert own job apply" on job_applies for insert with check (auth.jwt() ->> 'email' = user_email);
 -- No select policy: learners only ever insert their own feedback; only the
 -- service-role client (Admin, sheet export) reads it back.
 create policy "insert own feedback" on feedback for insert with check (auth.jwt() ->> 'email' = user_email);
