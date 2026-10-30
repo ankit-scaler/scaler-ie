@@ -27,12 +27,15 @@ export function Stat({ label, value, accent = "acad" }: { label: string; value: 
     </div>
   );
 }
-export function Card({ title, children, accent = "acad" }: { title: string; children: React.ReactNode; accent?: Accent }) {
+export function Card({ title, children, accent = "acad", action }: { title: string; children: React.ReactNode; accent?: Accent; action?: React.ReactNode }) {
   const a = ACCENTS[accent];
   return (
     <div className="relative overflow-hidden rounded-2xl border border-edge bg-panel p-5 shadow-card">
       <div className={`absolute inset-x-0 top-0 h-[3px] ${a.bar}`} />
-      <div className={`mb-4 font-mono text-xs font-bold uppercase tracking-widest ${a.text}`}>{title}</div>
+      <div className="mb-4 flex items-center justify-between gap-3">
+        <div className={`font-mono text-xs font-bold uppercase tracking-widest ${a.text}`}>{title}</div>
+        {action}
+      </div>
       {children}
     </div>
   );
