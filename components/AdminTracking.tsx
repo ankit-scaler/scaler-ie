@@ -799,6 +799,32 @@ export default function AdminTracking() {
             <div className="py-4 text-center text-sm text-mute">No packet activity yet in this window.</div>
           )}
         </Card>
+        <Card title="Daily visits — Open Hirings" accent="topic"
+          action={<ExportButton defaultFrom={customFrom} defaultTo={customTo} onExport={exportJobsVisitsCsv} />}
+        >
+          <ResponsiveContainer width="100%" height={220}>
+            <LineChart data={activityBuckets}>
+              <CartesianGrid stroke="rgb(var(--edge))" vertical={false} />
+              <XAxis dataKey="day" stroke="rgb(var(--mute))" fontSize={11} />
+              <YAxis stroke="rgb(var(--mute))" fontSize={11} allowDecimals={false} />
+              <Tooltip contentStyle={{ background: "rgb(var(--panel))", border: "1px solid rgb(var(--edge))", borderRadius: 8, color: "rgb(var(--text))" }} />
+              <Line type="monotone" dataKey="jobsUsers" name="Visited Open Hirings" stroke="rgb(var(--topic))" strokeWidth={2} dot={false} />
+            </LineChart>
+          </ResponsiveContainer>
+        </Card>
+        <Card title="Daily visits — Company Packets" accent="aiml"
+          action={<ExportButton defaultFrom={customFrom} defaultTo={customTo} onExport={exportCompanyPacketsVisitsCsv} />}
+        >
+          <ResponsiveContainer width="100%" height={220}>
+            <LineChart data={activityBuckets}>
+              <CartesianGrid stroke="rgb(var(--edge))" vertical={false} />
+              <XAxis dataKey="day" stroke="rgb(var(--mute))" fontSize={11} />
+              <YAxis stroke="rgb(var(--mute))" fontSize={11} allowDecimals={false} />
+              <Tooltip contentStyle={{ background: "rgb(var(--panel))", border: "1px solid rgb(var(--edge))", borderRadius: 8, color: "rgb(var(--text))" }} />
+              <Line type="monotone" dataKey="companyPacketsUsers" name="Visited Company Packets" stroke="rgb(var(--aiml))" strokeWidth={2} dot={false} />
+            </LineChart>
+          </ResponsiveContainer>
+        </Card>
       </section>
 
       <SectionLabel accent="acad">Questions</SectionLabel>
@@ -1031,40 +1057,12 @@ export default function AdminTracking() {
         <Stat label="Total clicks on Apply (unique, per job per learner per day)" value={jobApplyClicks} accent="topic" />
       </section>
 
-      <Card title="Daily visits — Open Hirings" accent="topic"
-        action={<ExportButton defaultFrom={customFrom} defaultTo={customTo} onExport={exportJobsVisitsCsv} />}
-      >
-        <ResponsiveContainer width="100%" height={220}>
-          <LineChart data={activityBuckets}>
-            <CartesianGrid stroke="rgb(var(--edge))" vertical={false} />
-            <XAxis dataKey="day" stroke="rgb(var(--mute))" fontSize={11} />
-            <YAxis stroke="rgb(var(--mute))" fontSize={11} allowDecimals={false} />
-            <Tooltip contentStyle={{ background: "rgb(var(--panel))", border: "1px solid rgb(var(--edge))", borderRadius: 8, color: "rgb(var(--text))" }} />
-            <Line type="monotone" dataKey="jobsUsers" name="Visited Open Hirings" stroke="rgb(var(--topic))" strokeWidth={2} dot={false} />
-          </LineChart>
-        </ResponsiveContainer>
-      </Card>
-
       <SectionLabel accent="aiml">Company Packets</SectionLabel>
 
       <section className="grid grid-cols-1 gap-3 sm:grid-cols-2">
         <Stat label="Total visits (unique, per learner per day)" value={companyPacketsVisits} accent="aiml" />
         <Stat label="Unique learners who read a packet (Open Link)" value={companyPacketOpensUnique} accent="aiml" />
       </section>
-
-      <Card title="Daily visits — Company Packets" accent="aiml"
-        action={<ExportButton defaultFrom={customFrom} defaultTo={customTo} onExport={exportCompanyPacketsVisitsCsv} />}
-      >
-        <ResponsiveContainer width="100%" height={220}>
-          <LineChart data={activityBuckets}>
-            <CartesianGrid stroke="rgb(var(--edge))" vertical={false} />
-            <XAxis dataKey="day" stroke="rgb(var(--mute))" fontSize={11} />
-            <YAxis stroke="rgb(var(--mute))" fontSize={11} allowDecimals={false} />
-            <Tooltip contentStyle={{ background: "rgb(var(--panel))", border: "1px solid rgb(var(--edge))", borderRadius: 8, color: "rgb(var(--text))" }} />
-            <Line type="monotone" dataKey="companyPacketsUsers" name="Visited Company Packets" stroke="rgb(var(--aiml))" strokeWidth={2} dot={false} />
-          </LineChart>
-        </ResponsiveContainer>
-      </Card>
 
       <SectionLabel accent="acad">Learner Lookup</SectionLabel>
 
