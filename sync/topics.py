@@ -80,6 +80,52 @@ def fetch_canonical_topics(supa) -> list[str]:
     return names or list(_FALLBACK_TOPICS)
 
 
+# Gemini sometimes files a plainly technical question under "Behavioral"
+# (reported by the LST team: SQL and DSA questions showing up when learners
+# filter for behavioural prep). These two patterns decide when such an answer
+# deserves a second look. TECH_SIGNALS are strong signs the question asks for
+# technical knowledge or work; BEHAVIOURAL_SIGNALS mark questions that really
+# are behavioural even if a technical word appears ("tell me about a project
+# where you used React"). Tested on the CO Dashboard's rule-labelled copy of
+# the same workbook: 3 of 979 behavioural questions (0.3%) trip the check,
+# and 64% of technical ones do — and a trip only means a second look, not a
+# forced change.
+TECH_SIGNALS = re.compile(r"""(?ix)
+    \b(write|code|implement|build|create)\s+(a|an|the)?\s*(function|program|method|query|sql|class|script|api|endpoint|component|algorithm|code)\b
+  | \b(sql|query|queries|join|joins|index(es|ing)?|normali[sz]ation|database|schema|nosql|mongodb|postgres|mysql|redis)\b
+  | \b(array|arrays|string|strings|linked\s*list|binary\s*tree|tree|graph|heap|stack|queue|hash\s*map|hashmap|dictionary|recursion|dynamic\s*programming|dp|sorting|binary\s*search|two\s*pointers?|sliding\s*window|leetcode)\b
+  | \b(time|space)\s+complexity\b | \bbig[\s-]?o\b
+  | \bdesign\s+(a|an|the)\s+\w*\s*(system|service|api|database|schema|url\s*shortener|cache|rate\s*limiter|parking|class|lld|hld)\b | \bsystem\s+design\b | \blow[\s-]level\s+design\b
+  | \b(oops?|polymorphism|inheritance|encapsulation|abstraction|interface|multithreading|thread|threads|concurrency|deadlock|garbage\s*collection|jvm|closure|closures|promise|promises|async|await|event\s*loop|hoisting|virtual\s*dom|react|hooks?|useeffect|usestate|redux|node\.?js|express|spring|java|python|javascript|typescript|c\+\+|golang|docker|kubernetes|k8s|terraform|ci\s*/\s*cd|jenkins|aws|ec2|s3|lambda|linux|bash|git|http|rest|graphql|tcp|dns|load\s*balanc\w*|microservices?|kafka|pandas|numpy|regression|classification|overfitting|gradient|neural|transformer|llm|rag|embedding|machine\s*learning|deep\s*learning|statistics|probability|p-?value|hypothesis)\b
+  | \b(output\s+of|difference\s+between|what\s+is\s+the\s+use\s+of|how\s+does\s+\w+(\s+\w+)?\s+work)\b
+""")
+BEHAVIOURAL_SIGNALS = re.compile(r"""(?ix)
+    \b(tell\s+(me|us)\s+about\s+(a\s+time|yourself|a\s+situation|your)|describe\s+a\s+(time|situation)|a\s+time\s+when|why\s+(do\s+you\s+want|should\s+we|this\s+company|are\s+you\s+leaving|did\s+you\s+leave)|strengths?|weakness(es)?|conflict|disagree|your\s+manager|team\s*mate|teammate|stakeholder|deadline|failure|failed|mistake|challenge\s+you\s+faced|proud\s+of|where\s+do\s+you\s+see\s+yourself|(expected|current)\s+(ctc|salary|package)|salary\s+expectations?|notice\s+period|relocat\w*|introduce\s+yourself|walk\s+(me|us)\s+through\s+your\s+(resume|cv|background|project)|tell\s+(me|us)\s+about\s+(a|your)\s+(recent\s+)?projects?)\b
+""")
+
+
+def looks_technical(question: str) -> bool:
+    q = question or ""
+    return bool(TECH_SIGNALS.search(q)) and not BEHAVIOURAL_SIGNALS.search(q)
+
+
+def is_behavioral_topic(topic: Optional[str]) -> bool:
+    # Matched loosely so a rename in Admin ("Behavioural", "Behavioral / HR")
+    # doesn't silently switch the check off.
+    return bool(topic) and topic.strip().lower().startswith("behavio")
+
+
+# Appended to the prompt for the second look: "Behavioral" stays allowed, so
+# a question that really is behavioural keeps its topic.
+RECHECK_NOTE = (
+    "\n\nNote: a first pass labelled this question Behavioral, but it contains "
+    "technical terms. Choose Behavioral ONLY if the question is about the "
+    "candidate's own experiences, attitudes, motivation or soft skills. If it "
+    "asks for technical knowledge, code, a query, a design or an explanation "
+    "of how something works, choose the matching technical topic instead."
+)
+
+
 def _enum_key(s: str) -> str:
     return re.sub(r"[^A-Za-z0-9]+", "_", s).strip("_").upper() or "TOPIC"
 
@@ -116,12 +162,12 @@ class Classifier:
             "Topics:\n" + "\n".join(f"- {t}" for t in topics)
         )
 
-    def build_user_prompt(self, question: str, raw_topic: Optional[str]) -> str:
+    def build_user_prompt(self, question: str, raw_topic: Optional[str], recheck: bool = False) -> str:
         hint = f'\nSheet\'s raw "Related Topic" value (weak hint only, often wrong): {raw_topic}' if raw_topic else ""
         # Folded into the single user turn (no separate system_instruction
         # param) so the exact same "contents" shape works for both a direct
         # generate_content call and an inline batch request.
-        return f"{self.system_prompt}\n\n---\n\nQuestion: {question}{hint}"
+        return f"{self.system_prompt}\n\n---\n\nQuestion: {question}{hint}{RECHECK_NOTE if recheck else ''}"
 
     def _parse_topic(self, text: Optional[str]) -> str:
         if not text:
@@ -132,20 +178,32 @@ class Classifier:
             return "Uncategorized"
         return topic if topic in self.topics else "Uncategorized"
 
-    def classify_one(self, client, question: str, raw_topic: Optional[str]) -> str:
-        """Direct (non-batch) classification of a single question — used by
-        the nightly sync, where only a handful of new rows need classifying."""
+    def _ask(self, client, prompt: str) -> str:
         from google.genai import types
-
         resp = client.models.generate_content(
             model=CLASSIFY_MODEL,
-            contents=self.build_user_prompt(question, raw_topic),
+            contents=prompt,
             config=types.GenerateContentConfig(
                 response_mime_type="application/json",
                 response_schema=self.enum,
             ),
         )
         return self._parse_topic(resp.text)
+
+    def recheck_behavioral(self, client, question: str, raw_topic: Optional[str]) -> str:
+        """The second look for a question labelled Behavioral that reads as
+        technical (see looks_technical). Gemini may still answer Behavioral."""
+        return self._ask(client, self.build_user_prompt(question, raw_topic, recheck=True))
+
+    def classify_one(self, client, question: str, raw_topic: Optional[str]) -> str:
+        """Direct (non-batch) classification of a single question — used by
+        the nightly sync, where only a handful of new rows need classifying,
+        and by backfill_topics.py. A "Behavioral" answer on a question that
+        reads as technical gets one second look before it's accepted."""
+        topic = self._ask(client, self.build_user_prompt(question, raw_topic))
+        if is_behavioral_topic(topic) and looks_technical(question):
+            topic = self.recheck_behavioral(client, question, raw_topic)
+        return topic
 
     def build_batch_request(self, question: str, raw_topic: Optional[str]) -> dict:
         """One inline Batch API request for a question — used by
