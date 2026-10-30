@@ -13,6 +13,7 @@ type Stats = {
   videoViews: { user_email: string; created_at: string; topic: string | null; role: string | null; yoe: string | null }[];
   feedback: { user_email: string; platform_rating: number; usefulness_rating: number; feedback_text: string | null; created_at: string }[];
   jobApplies: { user_email: string; job_id: number; created_at: string }[];
+  companyPacketOpens: { user_email: string; slug: string; created_at: string }[];
 };
 
 // "Unique, once a learner in a day" dedup — used for every section's "Total
@@ -53,6 +54,15 @@ function downloadCsv(filename: string, rows: (string | number)[][]) {
   a.href = url; a.download = filename;
   document.body.appendChild(a); a.click(); document.body.removeChild(a);
   URL.revokeObjectURL(url);
+}
+
+// A page_views row is either a genuine search/filter-narrow event (has
+// company/role/topic set — Questions and Assignments only ever fire /api/track
+// this way) or a bare page-visit ping (Jobs and Company Packets fire this on
+// every mount, path set, nothing else). "Daily searches" must only count the
+// former, or Jobs/Company Packets visits silently inflate that chart.
+function isSearchView(v: Stats["views"][number]) {
+  return !!(v.company || v.role || v.topic);
 }
 
 // Pure builders so the same grouping logic can run both against the live
@@ -129,6 +139,53 @@ function buildVideoByEmail(videoViews: Stats["videoViews"]) {
 function buildFeedbackRows(feedback: Stats["feedback"]) {
   return [...feedback].sort((a, b) => b.created_at.localeCompare(a.created_at));
 }
+
+// Every email this window's data mentions, from any surface — the Learner
+// Lookup autocomplete draws from this rather than a separate query.
+function allKnownEmails(data: Stats): string[] {
+  const s = new Set<string>();
+  data.views.forEach(v => s.add(v.user_email));
+  data.sessions.forEach(v => s.add(v.user_email));
+  data.packetViews.forEach(v => s.add(v.user_email));
+  data.assignmentViews.forEach(v => s.add(v.user_email));
+  data.videoViews.forEach(v => s.add(v.user_email));
+  data.jobApplies.forEach(v => s.add(v.user_email));
+  data.companyPacketOpens.forEach(v => s.add(v.user_email));
+  data.feedback.forEach(v => s.add(v.user_email));
+  return Array.from(s).sort();
+}
+
+type TimelineRow = { when: string; type: string; detail: string };
+
+// One chronological log of everything a single learner did in the window,
+// merged across all six tracked surfaces plus sessions and feedback — the
+// answer to "what did this person come for, and what did they do."
+function buildLearnerTimeline(data: Stats, email: string): TimelineRow[] {
+  const e = email.trim().toLowerCase();
+  const rows: TimelineRow[] = [];
+  data.sessions.filter(s => s.user_email.toLowerCase() === e).forEach(s =>
+    rows.push({ when: s.started_at, type: "Session", detail: `Active ~${Math.round((s.duration_sec || 0) / 60)}m` }));
+  data.views.filter(v => v.user_email.toLowerCase() === e).forEach(v => {
+    if (isSearchView(v)) {
+      rows.push({ when: v.created_at, type: "Search", detail: [v.program, v.company, v.role, v.topic].filter(Boolean).join(" · ") });
+    } else {
+      rows.push({ when: v.created_at, type: "Page visit", detail: v.path || "(unknown page)" });
+    }
+  });
+  data.packetViews.filter(v => v.user_email.toLowerCase() === e).forEach(v =>
+    rows.push({ when: v.created_at, type: "Packet read", detail: `${v.role || "—"} · ${v.yoe || "—"}` }));
+  data.assignmentViews.filter(v => v.user_email.toLowerCase() === e).forEach(v =>
+    rows.push({ when: v.created_at, type: "Assignment opened", detail: `${v.company || "—"} — ${v.role || "—"}${v.round ? ` · ${v.round}` : ""}` }));
+  data.videoViews.filter(v => v.user_email.toLowerCase() === e).forEach(v =>
+    rows.push({ when: v.created_at, type: "Video watched", detail: `${v.topic || "—"} (${v.role || "—"} · ${v.yoe || "—"})` }));
+  data.jobApplies.filter(v => v.user_email.toLowerCase() === e).forEach(v =>
+    rows.push({ when: v.created_at, type: "Applied to job", detail: `Job #${v.job_id}` }));
+  data.companyPacketOpens.filter(v => v.user_email.toLowerCase() === e).forEach(v =>
+    rows.push({ when: v.created_at, type: "Opened company packet", detail: v.slug }));
+  data.feedback.filter(v => v.user_email.toLowerCase() === e).forEach(v =>
+    rows.push({ when: v.created_at, type: "Feedback", detail: `Platform ${v.platform_rating}/5, Usefulness ${v.usefulness_rating}/5${v.feedback_text ? ` — "${v.feedback_text}"` : ""}` }));
+  return rows.sort((a, b) => b.when.localeCompare(a.when));
+}
 function buildPerUser(views: Stats["views"], sessions: Stats["sessions"]) {
   const m = new Map<string, { views: number; minutes: number; last: string }>();
   views.forEach(v => {
@@ -157,6 +214,37 @@ function buildPacketPerUser(packetViews: Stats["packetViews"]) {
     m.set(v.user_email, e);
   });
   return Array.from(m.entries()).map(([email, e]) => ({ email, ...e })).sort((a, b) => b.packetsRead - a.packetsRead);
+}
+
+// Raw (email, date) rows behind a chart's daily unique-count line — "who was
+// counted on which day," not just the aggregate. `dedupe` collapses multiple
+// same-day events from one email to a single row, since the chart itself
+// counts a learner once per day no matter how many times they did the thing.
+function dailyRows<T>(rows: T[], emailFn: (r: T) => string, dateFn: (r: T) => string): { email: string; date: string }[] {
+  const seen = new Set<string>();
+  const out: { email: string; date: string }[] = [];
+  for (const r of rows) {
+    const email = emailFn(r), date = dateFn(r).slice(0, 10);
+    const k = `${email}|${date}`;
+    if (seen.has(k)) continue;
+    seen.add(k);
+    out.push({ email, date });
+  }
+  return out.sort((a, b) => b.date.localeCompare(a.date) || a.email.localeCompare(b.email));
+}
+function buildActiveUserRows(sessions: Stats["sessions"]) {
+  return dailyRows(sessions, s => s.user_email, s => s.started_at);
+}
+function buildSearchedUserRows(views: Stats["views"]) {
+  return dailyRows(views.filter(isSearchView), v => v.user_email, v => v.created_at);
+}
+function buildContentEngagementRows(packetViews: Stats["packetViews"], videoViews: Stats["videoViews"]) {
+  const packets = dailyRows(packetViews, v => v.user_email, v => v.created_at).map(r => ({ ...r, type: "Read a packet" }));
+  const videos  = dailyRows(videoViews,  v => v.user_email, v => v.created_at).map(r => ({ ...r, type: "Watched a video" }));
+  return [...packets, ...videos].sort((a, b) => b.date.localeCompare(a.date) || a.email.localeCompare(b.email));
+}
+function buildPageVisitRows(views: Stats["views"], path: string) {
+  return dailyRows(views.filter(v => v.path === path), v => v.user_email, v => v.created_at);
 }
 
 async function fetchStatsWindow(from: string, to: string): Promise<Stats | null> {
@@ -237,6 +325,7 @@ export default function AdminTracking() {
   const [assignmentQuery, setAssignmentQuery] = useState("");
   const [videoQuery, setVideoQuery] = useState("");
   const [feedbackQuery, setFeedbackQuery] = useState("");
+  const [lookupEmail, setLookupEmail] = useState("");
 
   const load = async () => {
     setLoading(true);
@@ -270,23 +359,32 @@ export default function AdminTracking() {
     return 7;
   }, [range, customFrom, customTo]);
 
-  // One bucket per day, three independent activity signals so each graph
-  // answers a single unambiguous question instead of one chart with a vague
+  // One bucket per day, independent activity signals so each graph answers
+  // a single unambiguous question instead of one chart with a vague
   // "views"/"users" pair nobody can interpret without reading the code:
   //   - activeUsers: opened the site at all (a session exists that day)
-  //   - searchedUsers: narrowed the Questions/Assignments filters to a company+role
+  //   - searchedUsers: narrowed the Questions/Assignments filters to a
+  //     company+role or topic (bare page-visit pings are excluded — see
+  //     isSearchView)
   //   - packetUsers / videoUsers: actually read a packet / watched a video that day
+  //   - jobsUsers / companyPacketsUsers: visited /jobs / /company-packets that day
   const activityBuckets = useMemo(() => {
     if (!data) return [];
     const end = range === "custom" ? new Date(`${customTo}T00:00:00Z`) : new Date();
-    const map = new Map<string, { day: string; active: Set<string>; searched: Set<string>; packets: Set<string>; videos: Set<string> }>();
+    const map = new Map<string, { day: string; active: Set<string>; searched: Set<string>; packets: Set<string>; videos: Set<string>; jobs: Set<string>; companyPackets: Set<string> }>();
     for (let i = bucketDays - 1; i >= 0; i--) {
       const d = new Date(end.getTime() - i * 86400_000);
       const k = d.toISOString().slice(0, 10);
-      map.set(k, { day: k.slice(5), active: new Set(), searched: new Set(), packets: new Set(), videos: new Set() });
+      map.set(k, { day: k.slice(5), active: new Set(), searched: new Set(), packets: new Set(), videos: new Set(), jobs: new Set(), companyPackets: new Set() });
     }
     data.sessions.forEach(s => { map.get(s.started_at.slice(0, 10))?.active.add(s.user_email); });
-    data.views.forEach(v => { map.get(v.created_at.slice(0, 10))?.searched.add(v.user_email); });
+    data.views.forEach(v => {
+      const bucket = map.get(v.created_at.slice(0, 10));
+      if (!bucket) return;
+      if (isSearchView(v)) bucket.searched.add(v.user_email);
+      if (v.path === "/jobs") bucket.jobs.add(v.user_email);
+      if (v.path === "/company-packets") bucket.companyPackets.add(v.user_email);
+    });
     data.packetViews.forEach(v => { map.get(v.created_at.slice(0, 10))?.packets.add(v.user_email); });
     data.videoViews.forEach(v => { map.get(v.created_at.slice(0, 10))?.videos.add(v.user_email); });
     return Array.from(map.values()).map(b => ({
@@ -295,6 +393,8 @@ export default function AdminTracking() {
       searchedUsers: b.searched.size,
       packetUsers: b.packets.size,
       videoUsers: b.videos.size,
+      jobsUsers: b.jobs.size,
+      companyPacketsUsers: b.companyPackets.size,
     }));
   }, [data, bucketDays, range, customTo]);
 
@@ -407,6 +507,23 @@ export default function AdminTracking() {
     () => data ? uniqueDailyCount(data.jobApplies, a => `${a.user_email}|${a.job_id}|${a.created_at.slice(0, 10)}`) : 0,
     [data]
   );
+  const companyPacketsVisits = useMemo(
+    () => data ? uniqueDailyCount(data.views.filter(v => v.path === "/company-packets"), v => `${v.user_email}|${v.created_at.slice(0, 10)}`) : 0,
+    [data]
+  );
+  // "Unique learners who read a packet" — same per-learner-per-item-per-day
+  // dedup as job applies: reading 3 different company packets in one day
+  // counts 3, re-opening the same one twice in one day counts 1.
+  const companyPacketOpensUnique = useMemo(
+    () => data ? uniqueDailyCount(data.companyPacketOpens, o => `${o.user_email}|${o.slug}|${o.created_at.slice(0, 10)}`) : 0,
+    [data]
+  );
+
+  const knownEmails = useMemo(() => data ? allKnownEmails(data) : [], [data]);
+  const learnerTimeline = useMemo(
+    () => data && lookupEmail.trim() ? buildLearnerTimeline(data, lookupEmail) : [],
+    [data, lookupEmail]
+  );
 
   // Every export re-fetches scoped to whatever window the user picks in the
   // ExportButton popover — independent of whatever range the dashboard is
@@ -435,6 +552,65 @@ export default function AdminTracking() {
       ...byEmail.map(u => [u.email, u.views, u.minutes, u.packetsRead, u.last]),
     ];
     downloadCsv(`admin-usage-${from}_to_${to}.csv`, rows);
+  };
+
+  const exportActiveUsersCsv = async (from: string, to: string) => {
+    const d = await fetchStatsWindow(from, to);
+    if (!d) { alert("Couldn't load data for that range."); return; }
+    const rows: (string | number)[][] = [["Email", "Date"], ...buildActiveUserRows(d.sessions).map(r => [r.email, r.date])];
+    downloadCsv(`admin-active-users-${from}_to_${to}.csv`, rows);
+  };
+
+  const exportSearchedUsersCsv = async (from: string, to: string) => {
+    const d = await fetchStatsWindow(from, to);
+    if (!d) { alert("Couldn't load data for that range."); return; }
+    const rows: (string | number)[][] = [["Email", "Date"], ...buildSearchedUserRows(d.views).map(r => [r.email, r.date])];
+    downloadCsv(`admin-daily-searches-${from}_to_${to}.csv`, rows);
+  };
+
+  const exportContentEngagementCsv = async (from: string, to: string) => {
+    const d = await fetchStatsWindow(from, to);
+    if (!d) { alert("Couldn't load data for that range."); return; }
+    const rows: (string | number)[][] = [
+      ["Email", "Date", "Type"],
+      ...buildContentEngagementRows(d.packetViews, d.videoViews).map(r => [r.email, r.date, r.type]),
+    ];
+    downloadCsv(`admin-content-engagement-${from}_to_${to}.csv`, rows);
+  };
+
+  const exportPacketsByUserCsv = async (from: string, to: string) => {
+    const d = await fetchStatsWindow(from, to);
+    if (!d) { alert("Couldn't load data for that range."); return; }
+    const rows: (string | number)[][] = [
+      ["Email", "Packets Read", "First read", "Last read"],
+      ...buildPacketPerUser(d.packetViews).map(u => [u.email, u.packetsRead, new Date(u.first).toLocaleString(), new Date(u.last).toLocaleString()]),
+    ];
+    downloadCsv(`admin-packets-by-user-${from}_to_${to}.csv`, rows);
+  };
+
+  const exportJobsVisitsCsv = async (from: string, to: string) => {
+    const d = await fetchStatsWindow(from, to);
+    if (!d) { alert("Couldn't load data for that range."); return; }
+    const rows: (string | number)[][] = [["Email", "Date"], ...buildPageVisitRows(d.views, "/jobs").map(r => [r.email, r.date])];
+    downloadCsv(`admin-open-hirings-visits-${from}_to_${to}.csv`, rows);
+  };
+
+  const exportCompanyPacketsVisitsCsv = async (from: string, to: string) => {
+    const d = await fetchStatsWindow(from, to);
+    if (!d) { alert("Couldn't load data for that range."); return; }
+    const rows: (string | number)[][] = [["Email", "Date"], ...buildPageVisitRows(d.views, "/company-packets").map(r => [r.email, r.date])];
+    downloadCsv(`admin-company-packets-visits-${from}_to_${to}.csv`, rows);
+  };
+
+  const exportLearnerTimelineCsv = async (from: string, to: string) => {
+    if (!lookupEmail.trim()) { alert("Pick a learner first."); return; }
+    const d = await fetchStatsWindow(from, to);
+    if (!d) { alert("Couldn't load data for that range."); return; }
+    const rows: (string | number)[][] = [
+      ["When", "Type", "Detail"],
+      ...buildLearnerTimeline(d, lookupEmail).map(r => [new Date(r.when).toLocaleString(), r.type, r.detail]),
+    ];
+    downloadCsv(`admin-learner-${lookupEmail.trim()}-${from}_to_${to}.csv`, rows);
   };
 
   const exportCompanyBreakdownCsv = async (from: string, to: string) => {
@@ -564,7 +740,9 @@ export default function AdminTracking() {
       </section>
 
       <section className="grid grid-cols-1 gap-4 lg:grid-cols-2">
-        <Card title="Daily active users — opened the site" accent="acad">
+        <Card title="Daily active users — opened the site" accent="acad"
+          action={<ExportButton defaultFrom={customFrom} defaultTo={customTo} onExport={exportActiveUsersCsv} />}
+        >
           <ResponsiveContainer width="100%" height={220}>
             <LineChart data={activityBuckets}>
               <CartesianGrid stroke="rgb(var(--edge))" vertical={false} />
@@ -575,7 +753,9 @@ export default function AdminTracking() {
             </LineChart>
           </ResponsiveContainer>
         </Card>
-        <Card title="Daily searches — company/role/topic" accent="dsml">
+        <Card title="Daily searches — company/role/topic" accent="dsml"
+          action={<ExportButton defaultFrom={customFrom} defaultTo={customTo} onExport={exportSearchedUsersCsv} />}
+        >
           <p className="mb-2 text-xs text-mute">Learners who narrowed the filters to a specific company & role, or a topic, that day.</p>
           <ResponsiveContainer width="100%" height={220}>
             <LineChart data={activityBuckets}>
@@ -587,7 +767,9 @@ export default function AdminTracking() {
             </LineChart>
           </ResponsiveContainer>
         </Card>
-        <Card title="Daily content engagement" accent="aiml">
+        <Card title="Daily content engagement" accent="aiml"
+          action={<ExportButton defaultFrom={customFrom} defaultTo={customTo} onExport={exportContentEngagementCsv} />}
+        >
           <p className="mb-2 text-xs text-mute">Learners who read at least one packet, or watched at least one video resource, that day.</p>
           <ResponsiveContainer width="100%" height={220}>
             <LineChart data={activityBuckets}>
@@ -601,7 +783,9 @@ export default function AdminTracking() {
             </LineChart>
           </ResponsiveContainer>
         </Card>
-        <Card title="Packets opened — by unique user (top 20)" accent="devops">
+        <Card title="Packets opened — by unique user (top 20)" accent="devops"
+          action={<ExportButton defaultFrom={customFrom} defaultTo={customTo} onExport={exportPacketsByUserCsv} />}
+        >
           <ResponsiveContainer width="100%" height={220}>
             <BarChart data={packetsByUserChart}>
               <CartesianGrid stroke="rgb(var(--edge))" vertical={false} />
@@ -840,12 +1024,90 @@ export default function AdminTracking() {
         </div>
       </Card>
 
-      <SectionLabel accent="topic">Apply to Jobs</SectionLabel>
+      <SectionLabel accent="topic">Open Hirings</SectionLabel>
 
       <section className="grid grid-cols-1 gap-3 sm:grid-cols-2">
         <Stat label="Total visits (unique, per learner per day)" value={jobsVisits} accent="topic" />
         <Stat label="Total clicks on Apply (unique, per job per learner per day)" value={jobApplyClicks} accent="topic" />
       </section>
+
+      <Card title="Daily visits — Open Hirings" accent="topic"
+        action={<ExportButton defaultFrom={customFrom} defaultTo={customTo} onExport={exportJobsVisitsCsv} />}
+      >
+        <ResponsiveContainer width="100%" height={220}>
+          <LineChart data={activityBuckets}>
+            <CartesianGrid stroke="rgb(var(--edge))" vertical={false} />
+            <XAxis dataKey="day" stroke="rgb(var(--mute))" fontSize={11} />
+            <YAxis stroke="rgb(var(--mute))" fontSize={11} allowDecimals={false} />
+            <Tooltip contentStyle={{ background: "rgb(var(--panel))", border: "1px solid rgb(var(--edge))", borderRadius: 8, color: "rgb(var(--text))" }} />
+            <Line type="monotone" dataKey="jobsUsers" name="Visited Open Hirings" stroke="rgb(var(--topic))" strokeWidth={2} dot={false} />
+          </LineChart>
+        </ResponsiveContainer>
+      </Card>
+
+      <SectionLabel accent="aiml">Company Packets</SectionLabel>
+
+      <section className="grid grid-cols-1 gap-3 sm:grid-cols-2">
+        <Stat label="Total visits (unique, per learner per day)" value={companyPacketsVisits} accent="aiml" />
+        <Stat label="Unique learners who read a packet (Open Link)" value={companyPacketOpensUnique} accent="aiml" />
+      </section>
+
+      <Card title="Daily visits — Company Packets" accent="aiml"
+        action={<ExportButton defaultFrom={customFrom} defaultTo={customTo} onExport={exportCompanyPacketsVisitsCsv} />}
+      >
+        <ResponsiveContainer width="100%" height={220}>
+          <LineChart data={activityBuckets}>
+            <CartesianGrid stroke="rgb(var(--edge))" vertical={false} />
+            <XAxis dataKey="day" stroke="rgb(var(--mute))" fontSize={11} />
+            <YAxis stroke="rgb(var(--mute))" fontSize={11} allowDecimals={false} />
+            <Tooltip contentStyle={{ background: "rgb(var(--panel))", border: "1px solid rgb(var(--edge))", borderRadius: 8, color: "rgb(var(--text))" }} />
+            <Line type="monotone" dataKey="companyPacketsUsers" name="Visited Company Packets" stroke="rgb(var(--aiml))" strokeWidth={2} dot={false} />
+          </LineChart>
+        </ResponsiveContainer>
+      </Card>
+
+      <SectionLabel accent="acad">Learner Lookup</SectionLabel>
+
+      <Card title="Search a learner" accent="acad"
+        action={learnerTimeline.length > 0 ? <ExportButton defaultFrom={customFrom} defaultTo={customTo} onExport={exportLearnerTimelineCsv} /> : undefined}
+      >
+        <input
+          list="learner-emails"
+          value={lookupEmail}
+          onChange={e => setLookupEmail(e.target.value)}
+          placeholder="type or pick a learner's email..."
+          className="mb-4 w-full max-w-md rounded-xl border border-edge bg-panel2 px-3 py-2 text-sm text-text placeholder:text-mute/60 focus:border-acad focus:outline-none"
+        />
+        <datalist id="learner-emails">
+          {knownEmails.map(e => <option key={e} value={e} />)}
+        </datalist>
+        {!lookupEmail.trim() ? (
+          <div className="rounded-2xl border border-edge/60 bg-panel2 p-6 text-center text-sm text-mute">
+            Pick a learner to see everything they did in this window.
+          </div>
+        ) : learnerTimeline.length === 0 ? (
+          <div className="rounded-2xl border border-edge/60 bg-panel2 p-6 text-center text-sm text-mute">
+            No activity for {lookupEmail} in this window.
+          </div>
+        ) : (
+          <div className="max-h-[480px] overflow-y-auto">
+            <table className="w-full text-sm">
+              <thead className="sticky top-0 bg-panel text-left font-mono text-[11px] uppercase tracking-widest text-mute">
+                <tr><th className="py-2">When</th><th className="py-2">Type</th><th className="py-2">Detail</th></tr>
+              </thead>
+              <tbody className="divide-y divide-edge/60">
+                {learnerTimeline.map((r, i) => (
+                  <tr key={i}>
+                    <td className="py-2 font-mono text-xs text-mute">{new Date(r.when).toLocaleString()}</td>
+                    <td className="py-2 font-mono text-xs text-acad">{r.type}</td>
+                    <td className="py-2 text-mute">{r.detail}</td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+        )}
+      </Card>
 
       <SectionLabel accent="acad">Users</SectionLabel>
 

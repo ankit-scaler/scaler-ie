@@ -20,7 +20,7 @@ from (
   union all
   select company, 'a' from assignments
   union all
-  select company, 'j' from jobs where date_posted >= current_date - 30
+  select company, 'j' from jobs where date_posted >= current_date - 7
 ) t
 where btrim(coalesce(company, '')) <> ''
 group by 1;
