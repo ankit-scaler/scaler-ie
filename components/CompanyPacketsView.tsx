@@ -1,5 +1,5 @@
 "use client";
-import { useMemo, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import { motion } from "framer-motion";
 import PacketsSwitch from "@/components/PacketsSwitch";
 import { PacketListItem, TRACK_LABELS, YOE_LABELS, Track, YoeBucket } from "@/lib/packets-db";
@@ -24,6 +24,19 @@ const DEFAULT_STATE: State = { track: "All", yoe: "All", company: "All", role: "
 export default function CompanyPacketsView({ initial }: { initial: PacketListItem[] }) {
   const [state, setState] = useState<State>(DEFAULT_STATE);
   const [visible, setVisible] = useState(PAGE);
+
+  // Same page-visit pattern as Jobs — one event per mount, deduped to
+  // "unique learners per day" on the Tracking page.
+  useEffect(() => {
+    fetch("/api/track", {
+      method: "POST",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify({ path: "/company-packets" }),
+    }).catch(() => {});
+  }, []);
+
+  const trackOpen = (slug: string) =>
+    fetch("/api/track-packet-open", { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify({ slug }) }).catch(() => {});
 
   const tracks = useMemo(
     () => (Object.keys(TRACK_LABELS) as Track[]).filter(t => initial.some(p => p.track === t)),
@@ -140,6 +153,7 @@ export default function CompanyPacketsView({ initial }: { initial: PacketListIte
                   <a
                     href={`${PACKET_GENERATOR_BASE}${p.slug}`}
                     target="_blank" rel="noopener noreferrer"
+                    onClick={() => trackOpen(p.slug)}
                     className="mt-4 inline-flex w-fit items-center gap-2 rounded-xl border border-edge bg-panel2 px-3.5 py-2 text-sm text-text transition hover:border-text/40"
                   >
                     Open Link

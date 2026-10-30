@@ -187,6 +187,20 @@ create index if not exists idx_ja_email   on job_applies (user_email);
 create index if not exists idx_ja_job     on job_applies (job_id);
 create index if not exists idx_ja_created on job_applies (created_at desc);
 
+-- ============ COMPANY PACKETS ANALYTICS ============
+-- The packet lives in a separate project's Neon database, not here — slug
+-- is the only stable identifier this app has for it, and there's nothing
+-- local to foreign-key against.
+create table if not exists company_packet_opens (
+  id         bigserial primary key,
+  user_email text not null,
+  slug       text not null,
+  created_at timestamptz default now()
+);
+create index if not exists idx_cpo_email   on company_packet_opens (user_email);
+create index if not exists idx_cpo_slug    on company_packet_opens (slug);
+create index if not exists idx_cpo_created on company_packet_opens (created_at desc);
+
 -- ============ FEEDBACK ============
 create table if not exists feedback (
   id                bigserial primary key,
@@ -226,6 +240,7 @@ alter table allowed_learners     enable row level security;
 alter table feedback             enable row level security;
 alter table jobs                 enable row level security;
 alter table job_applies          enable row level security;
+alter table company_packet_opens enable row level security;
 
 -- Policies aren't CREATE-IF-NOT-EXISTS-able in Postgres, and the Supabase SQL editor
 -- runs a pasted script as one transaction — one "already exists" error rolls back
@@ -244,6 +259,7 @@ drop policy if exists "admins read self" on admins;
 drop policy if exists "insert own feedback" on feedback;
 drop policy if exists "read jobs" on jobs;
 drop policy if exists "insert own job apply" on job_applies;
+drop policy if exists "insert own company packet open" on company_packet_opens;
 
 create policy "read packets" on packets for select using (auth.role() = 'authenticated');
 create policy "insert own packet view" on packet_views for insert with check (auth.jwt() ->> 'email' = user_email);
@@ -251,6 +267,7 @@ create policy "read video resources" on video_resources for select using (auth.r
 create policy "insert own video resource view" on video_resource_views for insert with check (auth.jwt() ->> 'email' = user_email);
 create policy "insert own assignment view" on assignment_views for insert with check (auth.jwt() ->> 'email' = user_email);
 create policy "insert own job apply" on job_applies for insert with check (auth.jwt() ->> 'email' = user_email);
+create policy "insert own company packet open" on company_packet_opens for insert with check (auth.jwt() ->> 'email' = user_email);
 -- No select policy: learners only ever insert their own feedback; only the
 -- service-role client (Admin, sheet export) reads it back.
 create policy "insert own feedback" on feedback for insert with check (auth.jwt() ->> 'email' = user_email);
