@@ -1,7 +1,7 @@
 "use client";
 import Link from "next/link";
 import { usePathname, useRouter } from "next/navigation";
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { motion } from "framer-motion";
 import { supabaseBrowser } from "@/lib/supabase-browser";
 import ThemeToggle from "./ThemeToggle";
@@ -11,6 +11,8 @@ export default function Header() {
   const [email, setEmail]   = useState<string | null>(null);
   const [isAdmin, setAdmin] = useState(false);
   const [signingOut, setSigningOut] = useState(false);
+  const [accountMenuOpen, setAccountMenuOpen] = useState(false);
+  const accountMenuRef = useRef<HTMLDivElement>(null);
   const path = usePathname();
   const router = useRouter();
   const sb = supabaseBrowser();
@@ -38,17 +40,36 @@ export default function Header() {
     return () => sub.subscription.unsubscribe();
   }, []);
 
-  const tab = (href: string, label: string, external = false) => {
+  useEffect(() => {
+    if (!accountMenuOpen) return;
+    const onPointerDown = (e: MouseEvent) => {
+      if (accountMenuRef.current && !accountMenuRef.current.contains(e.target as Node)) {
+        setAccountMenuOpen(false);
+      }
+    };
+    const onKeyDown = (e: KeyboardEvent) => { if (e.key === "Escape") setAccountMenuOpen(false); };
+    document.addEventListener("mousedown", onPointerDown);
+    document.addEventListener("keydown", onKeyDown);
+    return () => {
+      document.removeEventListener("mousedown", onPointerDown);
+      document.removeEventListener("keydown", onKeyDown);
+    };
+  }, [accountMenuOpen]);
+
+  const tab = (href: string, label: string, opts: { external?: boolean; highlight?: boolean } = {}) => {
+    const { external = false, highlight = false } = opts;
     const active = !external && path === href;
     return (
       <Link
         href={href}
         {...(external ? { target: "_blank", rel: "noopener noreferrer" } : {})}
         className={`group relative whitespace-nowrap rounded-full px-4 py-1.5 text-sm transition-colors duration-200 ${
-          active ? "text-text" : "text-mute hover:text-text"
+          highlight
+            ? "border border-acad/40 bg-ink text-acad hover:bg-acad/10"
+            : active ? "text-text" : "text-mute hover:text-text"
         }`}
       >
-        {active ? (
+        {!highlight && (active ? (
           <motion.span
             layoutId="nav-active-pill"
             className="absolute inset-0 rounded-full border border-edge bg-panel2"
@@ -56,7 +77,7 @@ export default function Header() {
           />
         ) : (
           <span className="absolute inset-0 rounded-full bg-panel2 opacity-0 transition-opacity duration-200 group-hover:opacity-70" />
-        )}
+        ))}
         <span className="relative z-10">{label}</span>
       </Link>
     );
@@ -64,8 +85,8 @@ export default function Header() {
 
   return (
     <header className="sticky top-0 z-40 border-b border-edge/60 bg-ink/70 backdrop-blur-xl">
-      <div className="mx-auto flex max-w-7xl items-center justify-between px-4 py-3 sm:px-6">
-        <Link href="/" className="flex items-center gap-2 transition-opacity duration-200 hover:opacity-80">
+      <div className="mx-auto flex w-full items-center justify-between gap-4 px-4 py-3 sm:px-6">
+        <Link href="/" className="flex shrink-0 items-center gap-2 transition-opacity duration-200 hover:opacity-80">
           <ScalerLogo className="h-6 w-auto text-text" />
           <span className="hidden font-display text-xl leading-none sm:inline">Interview Vault</span>
           <span className="relative hidden h-2 w-2 sm:inline-flex" title="Live">
@@ -74,20 +95,43 @@ export default function Header() {
           </span>
         </Link>
         {email && (
-          <nav className="flex items-center gap-1 overflow-x-auto">
+          <nav className="flex min-w-0 flex-1 items-center justify-center gap-2 overflow-x-auto sm:overflow-visible">
             {tab("/", "Questions")}
             {tab("/assignments", "Assignments")}
             {tab("/packets", "Prepare for Trending roles")}
             {tab("/jobs", "Apply to Jobs")}
-            {isAdmin && tab("/admin", "Admin")}
-            {tab("https://cortex-by-scaler.up.railway.app/login", "Revise with Crash Course", true)}
+            {tab("https://cortex-by-scaler.up.railway.app/login", "Revise with Crash Course", { external: true, highlight: true })}
           </nav>
         )}
-        <div className="flex items-center gap-3">
+        <div className="flex shrink-0 items-center gap-3">
           {!isPacketOpen && <ThemeToggle />}
           {email ? (
             <>
-              <span className="hidden text-sm text-mute sm:inline">{email}</span>
+              {isAdmin ? (
+                <div className="relative" ref={accountMenuRef}>
+                  <button
+                    onClick={() => setAccountMenuOpen(v => !v)}
+                    className="hidden items-center gap-1.5 rounded-full border border-transparent px-2 py-1 text-sm text-mute transition-colors duration-200 hover:border-edge hover:text-text sm:flex"
+                  >
+                    {email}
+                    <svg
+                      className={`h-3.5 w-3.5 transition-transform duration-200 ${accountMenuOpen ? "rotate-180" : ""}`}
+                      viewBox="0 0 20 20" fill="currentColor"
+                    ><path d="M5.5 7.5l4.5 4.5 4.5-4.5" stroke="currentColor" strokeWidth="1.5" fill="none" strokeLinecap="round" strokeLinejoin="round"/></svg>
+                  </button>
+                  {accountMenuOpen && (
+                    <div className="absolute right-0 top-full z-50 mt-2 w-40 overflow-hidden rounded-xl border border-edge bg-panel shadow-card">
+                      <Link
+                        href="/admin"
+                        onClick={() => setAccountMenuOpen(false)}
+                        className="block px-4 py-2.5 text-sm text-text transition-colors hover:bg-panel2"
+                      >Admin</Link>
+                    </div>
+                  )}
+                </div>
+              ) : (
+                <span className="hidden text-sm text-mute sm:inline">{email}</span>
+              )}
               <motion.button
                 onClick={async () => {
                   setSigningOut(true);
