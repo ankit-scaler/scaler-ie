@@ -49,8 +49,12 @@ export async function fetchTableCached<T extends { id: number }>({
   const sb = () => supabaseAdmin();
   const applyFilter = (q: any) => (filter ? filter(q) : q);
 
+  // A failed request throws instead of returning an empty list: unstable_cache
+  // doesn't store a thrown result, so a Supabase hiccup (or a column that
+  // doesn't exist yet) can't get cached as "no rows" for a whole day.
   const total = await unstable_cache(async () => {
-    const { count } = await applyFilter(sb().from(table).select("id", { count: "exact", head: true }));
+    const { count, error } = await applyFilter(sb().from(table).select("id", { count: "exact", head: true }));
+    if (error) throw new Error(`[cached-table] ${dataset} count failed: ${error.message}`);
     return count ?? 0;
   }, [...key, "count"], opts)();
   if (total === 0) return [];
@@ -66,7 +70,10 @@ export async function fetchTableCached<T extends { id: number }>({
             .order("id", { ascending: false })
             .range(start, Math.min(start + REQUEST_ROWS - 1, to)));
         }
-        const rows = (await Promise.all(requests)).flatMap((r: any) => (r.data as T[]) || []);
+        const results = await Promise.all(requests);
+        const failed = results.find((r: any) => r.error);
+        if (failed) throw new Error(`[cached-table] ${dataset} chunk ${c} failed: ${(failed as any).error.message}`);
+        const rows = results.flatMap((r: any) => (r.data as T[]) || []);
         const bytes = JSON.stringify(rows).length;
         if (bytes > WARN_BYTES) {
           console.warn(`[cached-table] ${dataset} chunk ${c} is ${(bytes / 1048576).toFixed(2)} MB — lower ROWS_PER_CHUNK before it passes 2 MB and stops caching.`);

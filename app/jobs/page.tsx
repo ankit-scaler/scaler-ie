@@ -16,7 +16,7 @@ const getAllJobs = () => {
     select: "id,site,title,company,location,is_remote,job_type,date_posted,job_url,search_role",
     filter: q => q.gte("date_posted", cutoff),
     keyExtra: cutoff,
-  });
+  }).catch(e => { console.error(e); return [] as Job[]; });  // not cached; retried next view
 };
 
 export default async function Jobs() {
