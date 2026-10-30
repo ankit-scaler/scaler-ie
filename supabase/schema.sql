@@ -203,6 +203,26 @@ create index if not exists idx_cpo_email   on company_packet_opens (user_email);
 create index if not exists idx_cpo_slug    on company_packet_opens (slug);
 create index if not exists idx_cpo_created on company_packet_opens (created_at desc);
 
+-- ============ PACKET REQUESTS ============
+-- "Request Packet" on /jobs: a learner asks for a company/role packet that
+-- doesn't exist yet. matched_slug is set when a live Neon lookup at request
+-- time finds one already — null means it got escalated to Slack instead.
+create table if not exists packet_requests (
+  id              bigserial primary key,
+  user_email      text not null,
+  contact_number  text not null,
+  company         text not null,
+  role            text not null,
+  jd_text         text,
+  interview_date  date,
+  matched_slug    text,
+  slack_notified  boolean not null default false,
+  created_at      timestamptz default now()
+);
+create index if not exists idx_pr_email   on packet_requests (user_email);
+create index if not exists idx_pr_created on packet_requests (created_at desc);
+create index if not exists idx_pr_slack   on packet_requests (slack_notified);
+
 -- ============ FEEDBACK ============
 create table if not exists feedback (
   id                bigserial primary key,
@@ -243,6 +263,7 @@ alter table feedback             enable row level security;
 alter table jobs                 enable row level security;
 alter table job_applies          enable row level security;
 alter table company_packet_opens enable row level security;
+alter table packet_requests      enable row level security;
 
 -- Policies aren't CREATE-IF-NOT-EXISTS-able in Postgres, and the Supabase SQL editor
 -- runs a pasted script as one transaction — one "already exists" error rolls back
@@ -262,6 +283,7 @@ drop policy if exists "insert own feedback" on feedback;
 drop policy if exists "read jobs" on jobs;
 drop policy if exists "insert own job apply" on job_applies;
 drop policy if exists "insert own company packet open" on company_packet_opens;
+drop policy if exists "insert own packet request" on packet_requests;
 
 create policy "read packets" on packets for select using (auth.role() = 'authenticated');
 create policy "insert own packet view" on packet_views for insert with check (auth.jwt() ->> 'email' = user_email);
@@ -270,6 +292,7 @@ create policy "insert own video resource view" on video_resource_views for inser
 create policy "insert own assignment view" on assignment_views for insert with check (auth.jwt() ->> 'email' = user_email);
 create policy "insert own job apply" on job_applies for insert with check (auth.jwt() ->> 'email' = user_email);
 create policy "insert own company packet open" on company_packet_opens for insert with check (auth.jwt() ->> 'email' = user_email);
+create policy "insert own packet request" on packet_requests for insert with check (auth.jwt() ->> 'email' = user_email);
 -- No select policy: learners only ever insert their own feedback; only the
 -- service-role client (Admin, sheet export) reads it back.
 create policy "insert own feedback" on feedback for insert with check (auth.jwt() ->> 'email' = user_email);
