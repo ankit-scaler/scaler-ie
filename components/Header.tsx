@@ -80,9 +80,17 @@ export default function Header() {
     { href: "/",                label: "Questions",   match: p => p === "/" },
     { href: "/company-packets", label: "Packets",     match: p => p.startsWith("/company-packets") || p.startsWith("/packets") },
     { href: "/assignments",     label: "Assignments", match: p => p.startsWith("/assignments") },
-    { href: "/jobs",            label: "Open Hirings", match: p => p.startsWith("/jobs") },
   ];
+  // Ankit's "Direction 1": after a divider, Open Hirings and Crash Course get
+  // the featured pill treatment.
+  const OPEN_HIRINGS = { href: "/jobs", label: "Open Hirings", match: (p: string) => p.startsWith("/jobs") };
   const CRASH_COURSE = "https://cortex-by-scaler.up.railway.app/login";
+  const featuredPill = (active: boolean) =>
+    `inline-flex items-center gap-1.5 whitespace-nowrap rounded-full px-4 py-1.5 text-sm transition-colors duration-200 ${
+      active
+        ? "border border-acad bg-acad/15 font-semibold text-acad"
+        : "border border-acad/40 bg-ink text-acad hover:border-acad/70 hover:bg-acad/15 hover:font-semibold"
+    }`;
 
   const ExternalIcon = () => (
     <svg className="h-3 w-3" viewBox="0 0 20 20" fill="currentColor" aria-hidden><path d="M7 3h10v10h-2V6.4L4.7 16.7 3.3 15.3 13.6 5H7V3z"/></svg>
@@ -138,11 +146,17 @@ export default function Header() {
         {email && (
           <nav aria-label="Main" className="hidden min-w-0 flex-1 items-center justify-center gap-2 md:flex">
             {TABS.map(t => tab(t.href, t.label, t.match(path || "")))}
+            <span className="mx-1 h-5 w-px shrink-0 self-center bg-edge" aria-hidden />
+            <Link
+              href={OPEN_HIRINGS.href}
+              aria-current={OPEN_HIRINGS.match(path || "") ? "page" : undefined}
+              className={featuredPill(OPEN_HIRINGS.match(path || ""))}
+            >{OPEN_HIRINGS.label}</Link>
             <a
               href={CRASH_COURSE}
               target="_blank" rel="noopener noreferrer"
-              className="inline-flex items-center gap-1.5 whitespace-nowrap rounded-full border border-acad/40 bg-ink px-4 py-1.5 text-sm text-acad transition-colors duration-200 hover:bg-acad/10"
-            >Crash Course <ExternalIcon /></a>
+              className={featuredPill(false)}
+            >Revise with Crash Course <ExternalIcon /></a>
           </nav>
         )}
 
@@ -217,11 +231,17 @@ export default function Header() {
               >{t.label}</Link>
             );
           })}
+          <div className="my-2 h-px bg-edge" aria-hidden />
+          <Link
+            href={OPEN_HIRINGS.href}
+            aria-current={OPEN_HIRINGS.match(path || "") ? "page" : undefined}
+            className={`block rounded-xl px-3 py-2.5 text-base ${OPEN_HIRINGS.match(path || "") ? "bg-acad/15 font-semibold text-acad" : "text-acad"}`}
+          >{OPEN_HIRINGS.label}</Link>
           <a
             href={CRASH_COURSE}
             target="_blank" rel="noopener noreferrer"
-            className="mt-1 flex items-center gap-1.5 rounded-xl px-3 py-2.5 text-base text-acad"
-          >Crash Course <ExternalIcon /></a>
+            className="flex items-center gap-1.5 rounded-xl px-3 py-2.5 text-base text-acad"
+          >Revise with Crash Course <ExternalIcon /></a>
         </nav>
       )}
     </header>
