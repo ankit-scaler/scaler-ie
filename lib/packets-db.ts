@@ -33,3 +33,18 @@ export async function getPublishedPackets(): Promise<PacketListItem[]> {
   `;
   return rows as PacketListItem[];
 }
+
+// Used by "Request Packet" on /jobs: exact, case-insensitive match on both
+// company and role — no fuzzy matching, so "Amazon" / "amazon " both hit,
+// but "Amazon India" does not match a packet titled just "Amazon".
+export async function findPacketByCompanyRole(company: string, role: string): Promise<{ slug: string } | null> {
+  const rows = await sql`
+    select slug
+    from "Packet"
+    where status = 'PUBLISHED'
+      and lower(trim(company)) = lower(trim(${company}))
+      and lower(trim(role)) = lower(trim(${role}))
+    limit 1
+  `;
+  return rows[0] ? { slug: rows[0].slug as string } : null;
+}

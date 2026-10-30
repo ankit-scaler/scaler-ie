@@ -373,6 +373,36 @@ def build_feedback_rows(feedback):
         ])
     return rows
 
+def select_packet_requests(supa):
+    """Packet requests that got escalated to Slack (no existing packet was
+    found for that company+role) — matched requests need no human follow-up,
+    so they're excluded here. Not windowed by All-time/Last-30d like the
+    rest of sync_tracking_to_sheet: request volume is low, so one running
+    log is more useful than two near-identical windows."""
+    PAGE = 1000
+    out, frm = [], 0
+    while True:
+        res = (supa.table("packet_requests")
+               .select("user_email,contact_number,company,role,jd_text,interview_date,created_at")
+               .eq("slack_notified", True)
+               .order("created_at", desc=True)
+               .range(frm, frm + PAGE - 1).execute())
+        rows = res.data or []
+        out.extend(rows)
+        if len(rows) < PAGE:
+            break
+        frm += PAGE
+    return out
+
+def build_packet_requests_rows(requests):
+    rows = [["Email", "Contact", "Company", "Role", "JD", "Interview/Assessment Date", "Requested At"]]
+    for r in requests:
+        rows.append([
+            r["user_email"], r.get("contact_number") or "", r["company"], r["role"],
+            (r.get("jd_text") or "")[:500], r.get("interview_date") or "", _fmt_ts(r["created_at"]),
+        ])
+    return rows
+
 def write_subsheet(tsh, title, rows):
     try:
         ws = gs_retry(tsh.worksheet, title)
@@ -417,6 +447,9 @@ def sync_tracking_to_sheet(gc, supa):
         write_subsheet(tsh, f"Assignment Opens ({window_label})", build_assignment_opens(assignment_views))
         write_subsheet(tsh, f"Videos Watched ({window_label})", build_video_watches(video_views))
         write_subsheet(tsh, f"Feedback ({window_label})", build_feedback_rows(feedback))
+
+    packet_requests = select_packet_requests(supa)
+    write_subsheet(tsh, "Packet Requests (Raised on Slack)", build_packet_requests_rows(packet_requests))
 
 def classify_one_with_retry(client, classifier, row):
     """Same 429 backoff as backfill_topics.py's classify_with_retry — a
