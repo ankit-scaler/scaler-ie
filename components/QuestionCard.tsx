@@ -5,15 +5,17 @@ const BAR: Record<string, string> = {
   Academy: "bg-acad", DSML: "bg-dsml", AIML: "bg-aiml", DevOps: "bg-devops",
 };
 const DOT = BAR;
-const BADGE: Record<string, string> = {
-  Academy: "border-acad/30 bg-acad/10 text-acad",
-  DSML:    "border-dsml/30 bg-dsml/10 text-dsml",
-  AIML:    "border-aiml/30 bg-aiml/10 text-aiml",
-  DevOps:  "border-devops/30 bg-devops/10 text-devops",
-};
 const TOPIC_TEXT: Record<string, string> = {
   Academy: "text-acad", DSML: "text-dsml", AIML: "text-aiml", DevOps: "text-devops",
 };
+
+// "2026-10-14" → "Oct 2026". Parsed as a plain date so no timezone can
+// shift it into the previous month.
+function askedLabel(iso: string): string {
+  const [y, m] = iso.split("-").map(Number);
+  const month = ["Jan", "Feb", "Mar", "Apr", "May", "Jun", "Jul", "Aug", "Sep", "Oct", "Nov", "Dec"][m - 1];
+  return month ? `${month} ${y}` : "";
+}
 
 export default function QuestionCard({
   q, index,
@@ -21,12 +23,15 @@ export default function QuestionCard({
   q: {
     id: number; program: string; company: string; role: string;
     round: string | null; question: string; related_topic: string | null;
-    topic_ai: string | null;
+    topic_ai: string | null; asked_on?: string | null;
   };
   index: number;
 }) {
   const prog = q.program in BAR ? q.program : "Academy";
   const topic = q.topic_ai || q.related_topic;
+  // Company · role · round as one quiet line instead of four coloured
+  // pills — the programme keeps its colour; the rest is just context.
+  const meta = [q.role.trim(), q.round].filter(Boolean).join(" · ");
   return (
     <motion.article
       initial={{ opacity: 0, y: 14 }}
@@ -36,13 +41,19 @@ export default function QuestionCard({
       className="group relative flex h-full flex-col overflow-hidden rounded-2xl border border-edge bg-panel p-5 shadow-card transition-shadow hover:shadow-cardH"
     >
       <div className={`absolute inset-x-0 top-0 h-[3px] ${BAR[prog]}`} />
-      <div className="mb-3 flex flex-wrap items-center gap-2 text-xs">
-        <span className={`inline-flex items-center gap-1.5 rounded-full border px-3 py-1 font-medium ${BADGE[prog]}`}>
-          <span className={`h-1.5 w-1.5 rounded-full ${DOT[prog]}`} />{q.program}
-        </span>
-        <span className="rounded-full border border-acad/30 bg-acad/10 px-3 py-1 text-acad">{q.company.trim()}</span>
-        <span className="rounded-full border border-dsml/30 bg-dsml/10 px-3 py-1 text-dsml">{q.role.trim()}</span>
-        {q.round && <span className="rounded-full border border-aiml/30 bg-aiml/10 px-3 py-1 text-aiml">{q.round}</span>}
+      <div className="mb-3 space-y-1">
+        <div className="flex items-center justify-between gap-3 text-xs">
+          <span className={`inline-flex items-center gap-1.5 font-medium ${TOPIC_TEXT[prog]}`}>
+            <span className={`h-1.5 w-1.5 rounded-full ${DOT[prog]}`} />{q.program}
+          </span>
+          {q.asked_on && askedLabel(q.asked_on) && (
+            <span className="font-mono text-mute">Asked {askedLabel(q.asked_on)}</span>
+          )}
+        </div>
+        <div className="text-sm">
+          <span className="font-medium text-text">{q.company.trim()}</span>
+          {meta && <span className="text-mute"> · {meta}</span>}
+        </div>
       </div>
       <p className="whitespace-pre-wrap break-words text-base leading-relaxed text-text">{q.question}</p>
       {topic && (
