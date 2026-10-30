@@ -840,7 +840,7 @@ export default function AdminTracking() {
         </div>
       </Card>
 
-      <SectionLabel accent="topic">Apply to Jobs</SectionLabel>
+      <SectionLabel accent="topic">Open Hirings</SectionLabel>
 
       <section className="grid grid-cols-1 gap-3 sm:grid-cols-2">
         <Stat label="Total visits (unique, per learner per day)" value={jobsVisits} accent="topic" />
