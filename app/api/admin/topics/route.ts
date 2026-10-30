@@ -1,4 +1,5 @@
 import { NextResponse } from "next/server";
+import { revalidateTag } from "next/cache";
 import { requireAdmin } from "@/lib/admin";
 import { supabaseAdmin } from "@/lib/supabase-server";
 
@@ -64,6 +65,7 @@ export async function PATCH(req: Request) {
   // topic_ai can never end up holding a name this table no longer has.
   const { error } = await admin.rpc("rename_canonical_topic", { old_name: oldName, new_name: newName });
   if (error) return NextResponse.json({ ok: false, error: error.message }, { status: 400 });
+  revalidateTag("questions"); // questions carry the topic name; refresh their cache
   return NextResponse.json({ ok: true });
 }
 
@@ -79,5 +81,6 @@ export async function DELETE(req: Request) {
   // a question's topic" rather than the delete silently orphaning them.
   const { error } = await admin.rpc("delete_canonical_topic", { topic_name: name });
   if (error) return NextResponse.json({ ok: false, error: error.message }, { status: 400 });
+  revalidateTag("questions"); // questions carry the topic name; refresh their cache
   return NextResponse.json({ ok: true });
 }

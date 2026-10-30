@@ -145,6 +145,39 @@ def get_col(row, name):
             return norm(v)
     return ""
 
+# The sheet's date cells are typed by hand in several formats ("2026-10-14",
+# "14-Oct-2026", "14-Sept-2026", "14/10/2026", "14 Oct 2026"), so each cell
+# is tried against each format on its own, day-first. Anything unparseable
+# stays empty rather than guessed.
+DATE_FORMATS = ["%Y-%m-%d", "%d-%b-%Y", "%d-%b-%y", "%d/%m/%Y", "%d/%m/%y", "%d %b %Y", "%d %B %Y", "%d-%m-%Y", "%m/%d/%Y"]
+
+def parse_sheet_date(raw):
+    s = (raw or "").strip()
+    if not s:
+        return None
+    s = re.sub(r"(?i)\bsept\b", "Sep", s)
+    s = s.split(" ")[0] if re.match(r"^\d{4}-\d{2}-\d{2} ", s) else s  # drop a time part
+    for f in DATE_FORMATS:
+        try:
+            d = datetime.strptime(s, f).date()
+        except ValueError:
+            continue
+        if 2015 <= d.year <= datetime.utcnow().year + 1:
+            return d.isoformat()
+    return None
+
+def bump_cache_versions(supa, names):
+    """Tell the website its cached copy of these datasets is out of date
+    (see lib/cached-table.ts): pages keep a day-long cache keyed on these
+    stamps, so moving them is what makes tonight's data show up. Never fails
+    the sync — if the cache_versions table isn't there yet, the site just
+    falls back to an hourly cache."""
+    now = datetime.utcnow().isoformat() + "Z"
+    try:
+        supa.table("cache_versions").upsert([{"name": n, "updated_at": now} for n in names], on_conflict="name").execute()
+    except Exception as e:
+        print(f"cache_versions bump skipped: {e}", file=sys.stderr)
+
 def dedupe_by_fp(rows):
     seen, out = set(), []
     for r in rows:
@@ -552,12 +585,23 @@ def main():
                 "round": rnd,
                 "question": question,
                 "related_topic": topic,
+                "asked_on": parse_sheet_date(get_col(row, "Date of Call") or get_col(row, "Date Added")),
                 "fingerprint": fp(program, company, role, rnd, question),
             })
         print(f"{tab_name}: cumulative {len(q_rows)}")
 
     q_rows = dedupe_by_fp(q_rows)
     print(f"total unique questions: {len(q_rows)}")
+
+    # asked_on needs supabase/add_question_asked_on.sql. If that migration
+    # hasn't run yet, leave the field out rather than failing the whole
+    # upsert (and with it, the night's sync).
+    try:
+        supa.table("questions").select("asked_on").limit(1).execute()
+    except Exception:
+        print("questions.asked_on missing (run add_question_asked_on.sql); syncing without dates", file=sys.stderr)
+        for r in q_rows:
+            r.pop("asked_on", None)
 
     for i in range(0, len(q_rows), 500):
         supa.table("questions").upsert(q_rows[i:i+500], on_conflict="fingerprint").execute()
@@ -663,6 +707,8 @@ def main():
                 delete_stale(supa, "assignments", {r["fingerprint"] for r in a_rows}, only_where_null="added_by")
     except Exception as e:
         print(f"assignments error: {e}", file=sys.stderr)
+
+    bump_cache_versions(supa, ["questions", "assignments"])
 
     # --- Tracking insights -> subsheets (Sheet <- Supabase, opposite direction) ---
     try:

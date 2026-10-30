@@ -19,6 +19,8 @@ create table if not exists questions (
   -- in Admin — backfill_topics.py skips these rows so a manual fix isn't
   -- clobbered by the next full reclassification run.
   topic_ai_manual boolean not null default false,
+  -- When the question was asked (sheet "Date of Call", else "Date Added").
+  asked_on     date,
   fingerprint  text unique not null,   -- dedupe key
   synced_at    timestamptz default now()
 );
@@ -311,3 +313,32 @@ create policy "own sessions rw" on sessions   for all
 
 -- Admin table: only admins can read/write (checked via service role in API)
 create policy "admins read self" on admins for select using (auth.jwt() ->> 'email' = email);
+
+-- Per-company prep summary used for cross-page links (see
+-- supabase/add_company_prep_counts.sql for the reasoning).
+create or replace view company_prep_counts with (security_invoker = true) as
+select lower(btrim(company))                        as company_key,
+       mode() within group (order by btrim(company)) as company,
+       count(*) filter (where src = 'q')            as questions,
+       count(*) filter (where src = 'a')            as assignments,
+       count(*) filter (where src = 'j')            as jobs
+from (
+  select company, 'q' as src from questions
+  union all
+  select company, 'a' from assignments
+  union all
+  select company, 'j' from jobs where date_posted >= current_date - 7
+) t
+where btrim(coalesce(company, '')) <> ''
+group by 1;
+grant select on company_prep_counts to authenticated;
+
+-- When each cached dataset last changed (see supabase/add_cache_versions.sql
+-- and lib/cached-table.ts). Service role only: RLS on, no policies.
+create table if not exists cache_versions (
+  name       text primary key,
+  updated_at timestamptz not null default now()
+);
+insert into cache_versions (name) values ('questions'), ('assignments'), ('jobs')
+  on conflict (name) do nothing;
+alter table cache_versions enable row level security;

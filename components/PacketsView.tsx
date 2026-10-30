@@ -3,6 +3,7 @@ import { useMemo } from "react";
 import Link from "next/link";
 import { motion } from "framer-motion";
 import { useUrlParam } from "@/lib/useUrlParam";
+import PacketsSwitch from "@/components/PacketsSwitch";
 
 type Packet = { id: number; role: string; yoe: string; doc_link: string | null; sort_order: number; content_synced_at: string | null; hasVideoResources: boolean };
 
@@ -14,9 +15,10 @@ export default function PacketsView({ packets }: { packets: Packet[] }) {
   return (
     <div className="space-y-8">
       <section>
-        <span className="font-mono text-[11px] uppercase tracking-widest text-mute">Packets for Hirings</span>
+        <div className="mb-5"><PacketsSwitch current="role" /></div>
+        <span className="font-mono text-[11px] uppercase tracking-widest text-mute">Role guides</span>
         <h1 className="mt-1 font-display text-4xl leading-tight sm:text-5xl">
-          Prep packets,<br /><span className="text-mute">by role and experience.</span>
+          Prep by role and experience,<br /><span className="text-mute">when your company has no packet yet.</span>
         </h1>
       </section>
 
