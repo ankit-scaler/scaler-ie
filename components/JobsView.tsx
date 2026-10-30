@@ -1,6 +1,7 @@
 "use client";
 import { useEffect, useMemo, useState } from "react";
 import JobRow from "./JobRow";
+import RequestPacketButton from "./RequestPacketButton";
 
 export type Job = {
   id: number;
@@ -136,14 +137,17 @@ export default function JobsView({ initial }: { initial: Job[] }) {
 
   return (
     <div className="space-y-8">
-      <section>
-        <span className="font-mono text-[11px] uppercase tracking-widest text-mute">Open Hirings</span>
-        <h1 className="mt-1 font-display text-4xl leading-tight sm:text-5xl">
-          Get Hired by<br /><span className="text-mute">Top Companies</span>
-        </h1>
-        <p className="mt-3 text-sm text-mute">
-          These jobs are sourced from external hiring platforms and not directly linked with Scaler Careerhub.
-        </p>
+      <section className="flex flex-wrap items-start justify-between gap-4">
+        <div>
+          <span className="font-mono text-[11px] uppercase tracking-widest text-mute">Open Hirings</span>
+          <h1 className="mt-1 font-display text-4xl leading-tight sm:text-5xl">
+            Get Hired by<br /><span className="text-mute">Top Companies</span>
+          </h1>
+          <p className="mt-3 text-sm text-mute">
+            These jobs are sourced from external hiring platforms and not directly linked with Scaler Careerhub.
+          </p>
+        </div>
+        <RequestPacketButton />
       </section>
 
       <section className="flex flex-wrap gap-3">
