@@ -1,0 +1,22 @@
+import { redirect } from "next/navigation";
+import { unstable_cache } from "next/cache";
+import { supabaseServer } from "@/lib/supabase-server";
+import { fetchAllRows } from "@/lib/paged-fetch";
+import JobsView, { Job } from "@/components/JobsView";
+
+export const dynamic = "force-dynamic";
+
+const getAllJobs = unstable_cache(
+  () => fetchAllRows<Job>("jobs", "id,site,title,company,location,is_remote,job_type,date_posted,job_url,search_role"),
+  ["all-jobs"],
+  { revalidate: 300, tags: ["jobs"] }
+);
+
+export default async function Jobs() {
+  const sb = supabaseServer();
+  const { data: { user } } = await sb.auth.getUser();
+  if (!user) redirect("/login");
+
+  const all = await getAllJobs();
+  return <JobsView initial={all} />;
+}
