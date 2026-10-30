@@ -1,0 +1,117 @@
+"use client";
+import { useMemo, useState } from "react";
+import Link from "next/link";
+import { motion } from "framer-motion";
+import { PacketListItem, TRACK_LABELS, YOE_LABELS, Track, YoeBucket } from "@/lib/packets-db";
+
+const PAGE = 30;
+
+const BAR: Record<Track, string> = { ACADEMY: "bg-acad", DEVOPS: "bg-devops", AIML: "bg-aiml", DSML: "bg-dsml" };
+const BADGE: Record<Track, string> = {
+  ACADEMY: "border-acad/30 bg-acad/10 text-acad",
+  DEVOPS:  "border-devops/30 bg-devops/10 text-devops",
+  AIML:    "border-aiml/30 bg-aiml/10 text-aiml",
+  DSML:    "border-dsml/30 bg-dsml/10 text-dsml",
+};
+
+type State = { track: "All" | Track; yoe: "All" | YoeBucket; q: string };
+const DEFAULT_STATE: State = { track: "All", yoe: "All", q: "" };
+
+export default function CompanyPacketsView({ initial }: { initial: PacketListItem[] }) {
+  const [state, setState] = useState<State>(DEFAULT_STATE);
+  const [visible, setVisible] = useState(PAGE);
+
+  const tracks = useMemo(
+    () => (Object.keys(TRACK_LABELS) as Track[]).filter(t => initial.some(p => p.track === t)),
+    [initial]
+  );
+
+  const filtered = useMemo(() => {
+    const qL = state.q.trim().toLowerCase();
+    return initial.filter(p =>
+      (state.track === "All" || p.track === state.track) &&
+      (state.yoe === "All" || p.yoeBucket === state.yoe) &&
+      (!qL || `${p.company} ${p.role}`.toLowerCase().includes(qL))
+    );
+  }, [initial, state]);
+
+  return (
+    <div className="space-y-8">
+      <section>
+        <span className="font-mono text-[11px] uppercase tracking-widest text-mute">Packets</span>
+        <h1 className="mt-1 font-display text-4xl leading-tight sm:text-5xl">
+          Company packets,<br /><span className="text-mute">round by round.</span>
+        </h1>
+      </section>
+
+      <section className="flex flex-wrap gap-3">
+        <input
+          value={state.q}
+          onChange={e => { setState(s => ({ ...s, q: e.target.value })); setVisible(PAGE); }}
+          placeholder="Search company or role…"
+          className="min-w-[200px] flex-1 rounded-xl border border-edge bg-panel px-4 py-2 text-sm text-text placeholder:text-mute focus:border-acad/50 focus:outline-none"
+        />
+        <select
+          value={state.track}
+          onChange={e => { setState(s => ({ ...s, track: e.target.value as State["track"] })); setVisible(PAGE); }}
+          className="rounded-xl border border-edge bg-panel px-3 py-2 text-sm text-text"
+        >
+          <option value="All">All tracks</option>
+          {tracks.map(t => <option key={t} value={t}>{TRACK_LABELS[t]}</option>)}
+        </select>
+        <select
+          value={state.yoe}
+          onChange={e => { setState(s => ({ ...s, yoe: e.target.value as State["yoe"] })); setVisible(PAGE); }}
+          className="rounded-xl border border-edge bg-panel px-3 py-2 text-sm text-text"
+        >
+          <option value="All">All experience</option>
+          {(Object.keys(YOE_LABELS) as YoeBucket[]).map(y => <option key={y} value={y}>{YOE_LABELS[y]}</option>)}
+        </select>
+      </section>
+
+      <section>
+        <div className="mb-3 font-mono text-sm text-mute">
+          {filtered.length.toLocaleString()} packet{filtered.length === 1 ? "" : "s"}
+        </div>
+        {filtered.length === 0 ? (
+          <div className="rounded-2xl border border-edge bg-panel p-10 text-center text-mute">
+            Nothing matches these filters yet.
+          </div>
+        ) : (
+          <div className="grid grid-cols-1 gap-4 md:grid-cols-2 xl:grid-cols-3">
+            {filtered.slice(0, visible).map((p, i) => (
+              <motion.div
+                key={p.slug}
+                initial={{ opacity: 0, y: 14 }}
+                animate={{ opacity: 1, y: 0 }}
+                transition={{ duration: 0.3, delay: Math.min(i * 0.02, 0.3) }}
+                whileHover={{ y: -3 }}
+              >
+                <Link
+                  href={`/company-packets/${p.slug}`}
+                  className="group relative flex h-full flex-col overflow-hidden rounded-2xl border border-edge bg-panel p-5 shadow-card transition-shadow hover:shadow-cardH"
+                >
+                  <div className={`absolute inset-x-0 top-0 h-[3px] ${BAR[p.track]}`} />
+                  <div className="mb-3 flex flex-wrap items-center gap-2 text-xs">
+                    <span className={`rounded-full border px-3 py-1 font-medium ${BADGE[p.track]}`}>{TRACK_LABELS[p.track]}</span>
+                    <span className="rounded-full border border-edge-strong px-3 py-1 text-mute">{YOE_LABELS[p.yoeBucket]}</span>
+                  </div>
+                  <div className="font-display text-lg leading-snug">{p.company}</div>
+                  <div className="mt-1 text-sm text-mute">{p.role}</div>
+                </Link>
+              </motion.div>
+            ))}
+          </div>
+        )}
+        {visible < filtered.length && (
+          <div className="mt-8 text-center">
+            <button
+              onClick={() => setVisible(v => v + PAGE)}
+              className="rounded-full border border-edge bg-panel px-5 py-2.5 text-sm text-text transition hover:border-text/40"
+            >Load more</button>
+          </div>
+        )}
+      </section>
+    </div>
+  );
+}
