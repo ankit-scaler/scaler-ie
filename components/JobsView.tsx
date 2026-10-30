@@ -139,6 +139,9 @@ export default function JobsView({ initial }: { initial: Job[] }) {
         <h1 className="mt-1 font-display text-4xl leading-tight sm:text-5xl">
           Get Hired by<br /><span className="text-mute">Top Companies</span>
         </h1>
+        <p className="mt-3 text-sm text-mute">
+          These jobs are sourced from external hiring platforms and not directly linked with Scaler Careerhub.
+        </p>
       </section>
 
       <section className="flex flex-wrap gap-3">
