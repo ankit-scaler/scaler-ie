@@ -124,7 +124,7 @@ export default function JobsView({ initial }: { initial: Job[] }) {
       <section>
         <span className="font-mono text-[11px] uppercase tracking-widest text-mute">Apply to jobs</span>
         <h1 className="mt-1 font-display text-4xl leading-tight sm:text-5xl">
-          Open roles,<br /><span className="text-mute">refreshed daily.</span>
+          Get Hired by<br /><span className="text-mute">Top Companies</span>
         </h1>
       </section>
 
