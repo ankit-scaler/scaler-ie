@@ -1,13 +1,14 @@
 "use client";
+import Link from "next/link";
 import { useEffect, useMemo, useState } from "react";
+import FilterBar, { EmptyState } from "@/components/FilterBar";
+import { useUrlState } from "@/lib/useUrlState";
+import { PACKET_GENERATOR_BASE, PrepCounts, companyKey } from "@/lib/prep-shared";
 import { motion } from "framer-motion";
+import PacketsSwitch from "@/components/PacketsSwitch";
 import { PacketListItem, TRACK_LABELS, YOE_LABELS, Track, YoeBucket } from "@/lib/packets-db";
 
 const PAGE = 30;
-// The actual reader lives in the separate Packets Generator app (same one
-// this page's data comes from) — "Open Link" sends the learner there by
-// slug rather than rendering rounds/questions natively in this app.
-const PACKET_GENERATOR_BASE = "https://interview-experiences-packets-creat.vercel.app/p/";
 
 const BAR: Record<Track, string> = { ACADEMY: "bg-acad", DEVOPS: "bg-devops", AIML: "bg-aiml", DSML: "bg-dsml" };
 const BADGE: Record<Track, string> = {
@@ -17,11 +18,12 @@ const BADGE: Record<Track, string> = {
   DSML:    "border-dsml/30 bg-dsml/10 text-dsml",
 };
 
-type State = { track: "All" | Track; yoe: "All" | YoeBucket; company: string; role: string; q: string };
+// Kept in the URL (?track=…&company=…&q=…) so a filtered list can be linked to.
+type State = { track: string; yoe: string; company: string; role: string; q: string };
 const DEFAULT_STATE: State = { track: "All", yoe: "All", company: "All", role: "All", q: "" };
 
-export default function CompanyPacketsView({ initial }: { initial: PacketListItem[] }) {
-  const [state, setState] = useState<State>(DEFAULT_STATE);
+export default function CompanyPacketsView({ initial, prep = {} }: { initial: PacketListItem[]; prep?: PrepCounts }) {
+  const [state, setState] = useUrlState<State>(DEFAULT_STATE);
   const [visible, setVisible] = useState(PAGE);
 
   // Same page-visit pattern as Jobs — one event per mount, deduped to
@@ -33,7 +35,6 @@ export default function CompanyPacketsView({ initial }: { initial: PacketListIte
       body: JSON.stringify({ path: "/company-packets" }),
     }).catch(() => {});
   }, []);
-
   const trackOpen = (slug: string) =>
     fetch("/api/track-packet-open", { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify({ slug }) }).catch(() => {});
 
@@ -61,6 +62,13 @@ export default function CompanyPacketsView({ initial }: { initial: PacketListIte
     return ["All", ...Array.from(new Set(scope.map(p => p.role))).sort()];
   }, [scopedForCompany, state.company]);
 
+  const companyCounts = useMemo(() => {
+    const m = new Map<string, number>();
+    scopedForCompany.forEach(p => m.set(p.company, (m.get(p.company) || 0) + 1));
+    return m;
+  }, [scopedForCompany]);
+  const active = JSON.stringify(state) !== JSON.stringify(DEFAULT_STATE);
+
   const filtered = useMemo(() => {
     const qL = state.q.trim().toLowerCase();
     return initial.filter(p =>
@@ -75,61 +83,47 @@ export default function CompanyPacketsView({ initial }: { initial: PacketListIte
   return (
     <div className="space-y-8">
       <section>
+        <div className="mb-5"><PacketsSwitch current="company" /></div>
         <span className="font-mono text-[11px] uppercase tracking-widest text-mute">Packets</span>
         <h1 className="mt-1 font-display text-4xl leading-tight sm:text-5xl">
           Company packets,<br /><span className="text-mute">one link away.</span>
         </h1>
       </section>
 
-      <section className="flex flex-wrap gap-3">
-        <input
-          value={state.q}
-          onChange={e => { setState(s => ({ ...s, q: e.target.value })); setVisible(PAGE); }}
-          placeholder="Search company or role…"
-          className="min-w-[200px] flex-1 rounded-xl border border-edge bg-panel px-4 py-2 text-sm text-text placeholder:text-mute focus:border-acad/50 focus:outline-none"
-        />
-        <select
-          value={state.track}
-          onChange={e => { setState(s => ({ ...s, track: e.target.value as State["track"], company: "All", role: "All" })); setVisible(PAGE); }}
-          className="rounded-xl border border-edge bg-panel px-3 py-2 text-sm text-text"
-        >
-          <option value="All">All tracks</option>
-          {tracks.map(t => <option key={t} value={t}>{TRACK_LABELS[t]}</option>)}
-        </select>
-        <select
-          value={state.yoe}
-          onChange={e => { setState(s => ({ ...s, yoe: e.target.value as State["yoe"], company: "All", role: "All" })); setVisible(PAGE); }}
-          className="rounded-xl border border-edge bg-panel px-3 py-2 text-sm text-text"
-        >
-          <option value="All">All experience</option>
-          {(Object.keys(YOE_LABELS) as YoeBucket[]).map(y => <option key={y} value={y}>{YOE_LABELS[y]}</option>)}
-        </select>
-        <select
-          value={state.company}
-          onChange={e => { setState(s => ({ ...s, company: e.target.value, role: "All" })); setVisible(PAGE); }}
-          className="rounded-xl border border-edge bg-panel px-3 py-2 text-sm text-text"
-        >
-          <option value="All">All companies</option>
-          {companies.filter(c => c !== "All").map(c => <option key={c} value={c}>{c}</option>)}
-        </select>
-        <select
-          value={state.role}
-          onChange={e => { setState(s => ({ ...s, role: e.target.value })); setVisible(PAGE); }}
-          className="rounded-xl border border-edge bg-panel px-3 py-2 text-sm text-text"
-        >
-          <option value="All">All roles</option>
-          {roles.filter(r => r !== "All").map(r => <option key={r} value={r}>{r}</option>)}
-        </select>
-      </section>
+      <FilterBar
+        search={state.q}
+        onSearch={q => { setState(s => ({ ...s, q })); setVisible(PAGE); }}
+        placeholder="Search a company or role"
+        suggestions={companies.filter(c => c !== "All").map(c => ({
+          group: "Companies", value: c, count: companyCounts.get(c),
+          onPick: () => { setState(s => ({ ...s, company: c, role: "All", q: "" })); setVisible(PAGE); },
+        }))}
+        segments={{
+          value: state.track,
+          options: [{ value: "All", label: "All" }, ...tracks.map(t => ({ value: t, label: TRACK_LABELS[t] }))],
+          onChange: t => { setState(s => ({ ...s, track: t, company: "All", role: "All" })); setVisible(PAGE); },
+        }}
+        facets={[
+          { key: "company", label: "Company", value: state.company,
+            options: companies.filter(c => c !== "All").map(c => ({ value: c, count: companyCounts.get(c) })),
+            onChange: c => { setState(s => ({ ...s, company: c, role: "All" })); setVisible(PAGE); } },
+          { key: "role", label: "Role", value: state.role,
+            options: roles.filter(r => r !== "All").map(r => ({ value: r })),
+            onChange: r => { setState(s => ({ ...s, role: r })); setVisible(PAGE); } },
+          { key: "yoe", label: "Experience", value: state.yoe, searchable: false,
+            options: (Object.keys(YOE_LABELS) as YoeBucket[]).map(y => ({ value: y, label: YOE_LABELS[y] })),
+            onChange: y => { setState(s => ({ ...s, yoe: y, company: "All", role: "All" })); setVisible(PAGE); } },
+        ]}
+        onClearAll={() => { setState(DEFAULT_STATE); setVisible(PAGE); }}
+      />
+
 
       <section>
         <div className="mb-3 font-mono text-sm text-mute">
           {filtered.length.toLocaleString()} packet{filtered.length === 1 ? "" : "s"}
         </div>
         {filtered.length === 0 ? (
-          <div className="rounded-2xl border border-edge bg-panel p-10 text-center text-mute">
-            Nothing matches these filters yet.
-          </div>
+          <EmptyState onClear={active ? () => { setState(DEFAULT_STATE); setVisible(PAGE); } : undefined} />
         ) : (
           <div className="grid grid-cols-1 gap-4 md:grid-cols-2 xl:grid-cols-3">
             {filtered.slice(0, visible).map((p, i) => (
@@ -148,6 +142,7 @@ export default function CompanyPacketsView({ initial }: { initial: PacketListIte
                   </div>
                   <div className="font-display text-lg leading-snug">{p.company}</div>
                   <div className="mt-1 text-sm text-mute">{p.role}</div>
+                  <PrepLinks counts={prep[companyKey(p.company)]} />
                   <a
                     href={`${PACKET_GENERATOR_BASE}${p.slug}`}
                     target="_blank" rel="noopener noreferrer"
@@ -171,6 +166,27 @@ export default function CompanyPacketsView({ initial }: { initial: PacketListIte
           </div>
         )}
       </section>
+    </div>
+  );
+}
+
+// "Also for <company>": the vault's other prep for the same company, so a
+// learner who opens a packet card finds the past questions, assignments
+// and open jobs too. Only links with something behind them are shown.
+function PrepLinks({ counts }: { counts?: { company: string; questions: number; assignments: number; jobs: number } }) {
+  if (!counts) return null;
+  const c = encodeURIComponent(counts.company);
+  const links = [
+    counts.questions > 0 && { href: `/?company=${c}&ref=packet`, label: `${counts.questions.toLocaleString()} past question${counts.questions === 1 ? "" : "s"}` },
+    counts.assignments > 0 && { href: `/assignments?company=${c}&ref=packet`, label: `${counts.assignments} assignment${counts.assignments === 1 ? "" : "s"}` },
+    counts.jobs > 0 && { href: `/jobs?q=${c}&ref=packet`, label: `${counts.jobs} open job${counts.jobs === 1 ? "" : "s"}` },
+  ].filter(Boolean) as { href: string; label: string }[];
+  if (links.length === 0) return null;
+  return (
+    <div className="mt-3 flex flex-wrap gap-x-3 gap-y-1 text-sm">
+      {links.map(l => (
+        <Link key={l.href} href={l.href} className="text-acad underline-offset-4 hover:underline">{l.label} →</Link>
+      ))}
     </div>
   );
 }

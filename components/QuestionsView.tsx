@@ -1,7 +1,10 @@
 "use client";
 import { useMemo, useState, useEffect } from "react";
-import Filters, { FilterState } from "./Filters";
+import Filters, { FilterState, EMPTY_FILTERS, filtersActive } from "./Filters";
+import { EmptyState } from "./FilterBar";
 import QuestionCard from "./QuestionCard";
+import PacketBanner from "./PacketBanner";
+import type { PacketLink } from "@/lib/prep-shared";
 import { useUrlFilterState } from "@/lib/useUrlFilterState";
 
 export type Q = {
@@ -18,7 +21,7 @@ const DEFAULT_STATE: FilterState = { program: "All", company: "All", role: "All"
 
 const effectiveTopic = (x: Q) => (x.topic_ai || x.related_topic || "").trim();
 
-export default function QuestionsView({ initial }: { initial: Q[] }) {
+export default function QuestionsView({ initial, packets = [] }: { initial: Q[]; packets?: PacketLink[] }) {
   const [state, setState] = useUrlFilterState(DEFAULT_STATE);
   const [visible, setVisible] = useState(PAGE);
 
@@ -78,15 +81,14 @@ export default function QuestionsView({ initial }: { initial: Q[] }) {
       </section>
 
       <section>
+        <PacketBanner company={state.company} packets={packets} />
         <div className="mb-3 flex items-baseline justify-between">
           <span className="font-mono text-sm text-mute">
             {filtered.length.toLocaleString()} match{filtered.length === 1 ? "" : "es"}
           </span>
         </div>
         {filtered.length === 0 ? (
-          <div className="rounded-2xl border border-edge bg-panel p-10 text-center text-mute">
-            Nothing matches these filters yet.
-          </div>
+          <EmptyState onClear={filtersActive(state) ? () => setState(EMPTY_FILTERS) : undefined} />
         ) : (
           <div className="grid grid-cols-1 gap-4 md:grid-cols-2 xl:grid-cols-3">
             {filtered.slice(0, visible).map((q, i) => <QuestionCard key={q.id} q={q} index={i} />)}
