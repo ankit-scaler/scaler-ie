@@ -5,14 +5,22 @@ import { FlightSpinner } from "./FlightLoader";
 import { Card, Stat, SectionLabel } from "./AdminShared";
 
 type Stats = {
-  views: { user_email: string; company: string | null; role: string | null; program: string | null; topic: string | null; created_at: string }[];
+  views: { user_email: string; company: string | null; role: string | null; program: string | null; topic: string | null; path: string | null; created_at: string }[];
   sessions: { user_email: string; duration_sec: number; started_at: string }[];
   admins: { email: string; added_at: string; added_by: string | null }[];
   packetViews: { user_email: string; created_at: string; role: string | null; yoe: string | null }[];
   assignmentViews: { user_email: string; created_at: string; program: string | null; company: string | null; role: string | null; round: string | null }[];
   videoViews: { user_email: string; created_at: string; topic: string | null; role: string | null; yoe: string | null }[];
   feedback: { user_email: string; platform_rating: number; usefulness_rating: number; feedback_text: string | null; created_at: string }[];
+  jobApplies: { user_email: string; job_id: number; created_at: string }[];
 };
+
+// "Unique, once a learner in a day" dedup — used for every section's "Total
+// Visits"/"Total clicks" stat, so a learner refreshing a page 10 times in
+// one day still counts once, not 10.
+function uniqueDailyCount<T>(rows: T[], keyFn: (r: T) => string): number {
+  return new Set(rows.map(keyFn)).size;
+}
 
 const RANGES = [
   { k: "day",   label: "24h" },
@@ -367,6 +375,39 @@ export default function AdminTracking() {
     [feedbackRowsAll]
   );
 
+  // Page-wise "Total Visits" per section — each page's own page_views rows
+  // (tagged by `path` when the page's view fires /api/track), deduped to
+  // one count per learner per day. Packets/Videos don't go through
+  // page_views at all; opening a specific packet/video IS the visit, so
+  // packetViews/videoViews rows are the visit signal directly.
+  const questionsVisits = useMemo(
+    () => data ? uniqueDailyCount(data.views.filter(v => v.path === "/"), v => `${v.user_email}|${v.created_at.slice(0, 10)}`) : 0,
+    [data]
+  );
+  const assignmentsVisits = useMemo(
+    () => data ? uniqueDailyCount(data.views.filter(v => v.path === "/assignments"), v => `${v.user_email}|${v.created_at.slice(0, 10)}`) : 0,
+    [data]
+  );
+  const packetsVisits = useMemo(
+    () => data ? uniqueDailyCount(data.packetViews, v => `${v.user_email}|${v.created_at.slice(0, 10)}`) : 0,
+    [data]
+  );
+  const videosVisits = useMemo(
+    () => data ? uniqueDailyCount(data.videoViews, v => `${v.user_email}|${v.created_at.slice(0, 10)}`) : 0,
+    [data]
+  );
+  const jobsVisits = useMemo(
+    () => data ? uniqueDailyCount(data.views.filter(v => v.path === "/jobs"), v => `${v.user_email}|${v.created_at.slice(0, 10)}`) : 0,
+    [data]
+  );
+  // "For one job one learner count 1 in a day" — dedup key includes job_id,
+  // not just user+day, so applying to 3 different jobs in one day counts 3,
+  // but re-clicking Apply on the same job twice in one day still counts 1.
+  const jobApplyClicks = useMemo(
+    () => data ? uniqueDailyCount(data.jobApplies, a => `${a.user_email}|${a.job_id}|${a.created_at.slice(0, 10)}`) : 0,
+    [data]
+  );
+
   // Every export re-fetches scoped to whatever window the user picks in the
   // ExportButton popover — independent of whatever range the dashboard is
   // currently showing, so the file always matches the window you asked for.
@@ -576,7 +617,11 @@ export default function AdminTracking() {
         </Card>
       </section>
 
-      <SectionLabel accent="acad">Learner activity</SectionLabel>
+      <SectionLabel accent="acad">Questions</SectionLabel>
+
+      <section className="grid grid-cols-1 gap-3 sm:grid-cols-2">
+        <Stat label="Total visits (unique, per learner per day)" value={questionsVisits} accent="acad" />
+      </section>
 
       <Card title={`Company & role breakdown (${companyRoleBreakdown.length})`} accent="acad">
         <div className="mb-4 flex flex-wrap items-center gap-2">
@@ -660,25 +705,11 @@ export default function AdminTracking() {
         </div>
       </Card>
 
-      <Card title={`Users (${perUser.length})`} accent="dsml">
-        <div className="overflow-x-auto">
-          <table className="w-full text-sm">
-            <thead className="text-left font-mono text-[11px] uppercase tracking-widest text-mute">
-              <tr><th className="py-2">Email</th><th className="py-2">Views</th><th className="py-2">Time on site</th><th className="py-2">Last seen</th></tr>
-            </thead>
-            <tbody className="divide-y divide-edge/60">
-              {perUser.map(u => (
-                <tr key={u.email}>
-                  <td className="py-2">{u.email}</td>
-                  <td className="py-2 font-mono text-xs">{u.views}</td>
-                  <td className="py-2 font-mono text-xs">{formatDuration(u.minutes)}</td>
-                  <td className="py-2 font-mono text-xs text-mute">{new Date(u.last).toLocaleString()}</td>
-                </tr>
-              ))}
-            </tbody>
-          </table>
-        </div>
-      </Card>
+      <SectionLabel accent="aiml">Packets</SectionLabel>
+
+      <section className="grid grid-cols-1 gap-3 sm:grid-cols-2">
+        <Stat label="Total visits (unique, per learner per day)" value={packetsVisits} accent="aiml" />
+      </section>
 
       <Card title={`Packet reads — by learner (${packetByEmail.length})`} accent="aiml">
         <div className="mb-4 flex flex-wrap items-center gap-2">
@@ -719,6 +750,12 @@ export default function AdminTracking() {
         </div>
       </Card>
 
+      <SectionLabel accent="dsml">Assignments</SectionLabel>
+
+      <section className="grid grid-cols-1 gap-3 sm:grid-cols-2">
+        <Stat label="Total visits (unique, per learner per day)" value={assignmentsVisits} accent="dsml" />
+      </section>
+
       <Card title={`Assignment opens — by learner (${assignmentByEmail.length})`} accent="dsml">
         <div className="mb-4 flex flex-wrap items-center gap-2">
           <input
@@ -758,6 +795,12 @@ export default function AdminTracking() {
         </div>
       </Card>
 
+      <SectionLabel accent="devops">Videos</SectionLabel>
+
+      <section className="grid grid-cols-1 gap-3 sm:grid-cols-2">
+        <Stat label="Total visits (unique, per learner per day)" value={videosVisits} accent="devops" />
+      </section>
+
       <Card title={`Videos watched — by learner (${videoByEmail.length})`} accent="devops">
         <div className="mb-4 flex flex-wrap items-center gap-2">
           <input
@@ -796,6 +839,37 @@ export default function AdminTracking() {
           </table>
         </div>
       </Card>
+
+      <SectionLabel accent="topic">Apply to Jobs</SectionLabel>
+
+      <section className="grid grid-cols-1 gap-3 sm:grid-cols-2">
+        <Stat label="Total visits (unique, per learner per day)" value={jobsVisits} accent="topic" />
+        <Stat label="Total clicks on Apply (unique, per job per learner per day)" value={jobApplyClicks} accent="topic" />
+      </section>
+
+      <SectionLabel accent="acad">Users</SectionLabel>
+
+      <Card title={`Users (${perUser.length})`} accent="dsml">
+        <div className="overflow-x-auto">
+          <table className="w-full text-sm">
+            <thead className="text-left font-mono text-[11px] uppercase tracking-widest text-mute">
+              <tr><th className="py-2">Email</th><th className="py-2">Views</th><th className="py-2">Time on site</th><th className="py-2">Last seen</th></tr>
+            </thead>
+            <tbody className="divide-y divide-edge/60">
+              {perUser.map(u => (
+                <tr key={u.email}>
+                  <td className="py-2">{u.email}</td>
+                  <td className="py-2 font-mono text-xs">{u.views}</td>
+                  <td className="py-2 font-mono text-xs">{formatDuration(u.minutes)}</td>
+                  <td className="py-2 font-mono text-xs text-mute">{new Date(u.last).toLocaleString()}</td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        </div>
+      </Card>
+
+      <SectionLabel accent="acad">Feedback</SectionLabel>
 
       <Card title={`Learner feedback (${feedbackRows.length})`} accent="acad">
         <div className="mb-4 grid grid-cols-2 gap-3 sm:max-w-sm">
