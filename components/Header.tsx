@@ -99,8 +99,9 @@ export default function Header() {
             {tab("/", "Questions")}
             {tab("/assignments", "Assignments")}
             {tab("/packets", "Prepare for Trending roles")}
-            {tab("/jobs", "Open Hirings")}
             {tab("/company-packets", "Packets")}
+            <span className="mx-1 h-5 w-px shrink-0 self-center bg-edge" aria-hidden />
+            {tab("/jobs", "Open Hirings", { highlight: true })}
             {tab("https://cortex-by-scaler.up.railway.app/login", "Revise with Crash Course", { external: true, highlight: true })}
           </nav>
         )}
