@@ -78,6 +78,7 @@ export default function Header() {
             {tab("/", "Questions")}
             {tab("/assignments", "Assignments")}
             {tab("/packets", "Prepare for Trending roles")}
+            {tab("/jobs", "Apply to Jobs")}
             {isAdmin && tab("/admin", "Admin")}
             {tab("https://cortex-by-scaler.up.railway.app/login", "Revise with Crash Course", true)}
           </nav>
