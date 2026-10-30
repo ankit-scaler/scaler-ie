@@ -6,3 +6,4 @@ node_modules
 *.log
 .superpowers
 .venv-sync
+__pycache__
