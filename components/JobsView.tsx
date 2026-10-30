@@ -28,6 +28,26 @@ const CITIES: { label: string; match: string[] }[] = [
   { label: "Mumbai", match: ["mumbai"] },
   { label: "Chennai", match: ["chennai"] },
 ];
+// Derived from the title, since no scraped field gives a role category —
+// checked in this order so a more specific term wins over a generic one
+// (e.g. "Engineering Manager" lands in Manager, not Engineering).
+const ROLE_CATEGORIES: { label: string; match: string[] }[] = [
+  { label: "Product", match: ["product"] },
+  { label: "Program", match: ["program"] },
+  { label: "Manager", match: ["manager", "lead", "head of"] },
+  { label: "Data", match: ["data analyst", "data scientist", "data engineer"] },
+  { label: "Engineering", match: ["engineer", "developer", "sde", "swe"] },
+];
+const OTHER_CATEGORY = "Other";
+
+function categoryOf(title: string): string {
+  const t = title.toLowerCase();
+  for (const c of ROLE_CATEGORIES) {
+    if (c.match.some(k => t.includes(k))) return c.label;
+  }
+  return OTHER_CATEGORY;
+}
+
 const JOB_TYPE_LABELS: Record<string, string> = {
   fulltime: "Full-time", parttime: "Part-time", internship: "Internship",
   contract: "Contract", temporary: "Temporary", perdiem: "Per diem",
@@ -40,8 +60,8 @@ const POSTED_WITHIN = [
   { label: "Last 30 days", days: 30 },
 ];
 
-type State = { q: string; location: string; remoteOnly: boolean; jobType: string; postedDays: number | null };
-const DEFAULT_STATE: State = { q: "", location: "All", remoteOnly: false, jobType: "All", postedDays: null };
+type State = { q: string; location: string; remoteOnly: boolean; jobType: string; category: string; postedDays: number | null };
+const DEFAULT_STATE: State = { q: "", location: "All", remoteOnly: false, jobType: "All", category: "All", postedDays: null };
 
 // date_posted is a date (no time), so it parses at UTC midnight. Comparing
 // it against `Date.now() - N*86400000` traps "today's" postings in the
@@ -74,6 +94,10 @@ export default function JobsView({ initial }: { initial: Job[] }) {
     () => Array.from(new Set(initial.map(j => j.job_type).filter((t): t is string => !!t))).sort(),
     [initial]
   );
+  const categories = useMemo(
+    () => ROLE_CATEGORIES.map(c => c.label).filter(label => initial.some(j => categoryOf(j.title) === label)),
+    [initial]
+  );
 
   const filtered = useMemo(() => {
     const qL = state.q.trim().toLowerCase();
@@ -83,6 +107,7 @@ export default function JobsView({ initial }: { initial: Job[] }) {
         if (state.remoteOnly && !j.is_remote) return false;
         if (state.location !== "All" && !matchesLocation(j, state.location)) return false;
         if (state.jobType !== "All" && j.job_type !== state.jobType) return false;
+        if (state.category !== "All" && categoryOf(j.title) !== state.category) return false;
         if (state.postedDays != null && (!j.date_posted || daysSincePosted(j.date_posted) >= state.postedDays)) return false;
         return true;
       })
@@ -118,6 +143,14 @@ export default function JobsView({ initial }: { initial: Job[] }) {
           <option value="All">All locations</option>
           <option value="Remote">Remote</option>
           {CITIES.map(c => <option key={c.label} value={c.label}>{c.label}</option>)}
+        </select>
+        <select
+          value={state.category}
+          onChange={e => setState(s => ({ ...s, category: e.target.value }))}
+          className="rounded-xl border border-edge bg-panel px-3 py-2 text-sm text-text"
+        >
+          <option value="All">All roles</option>
+          {categories.map(c => <option key={c} value={c}>{c}</option>)}
         </select>
         <select
           value={state.jobType}
