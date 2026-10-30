@@ -19,6 +19,8 @@ create table if not exists questions (
   -- in Admin — backfill_topics.py skips these rows so a manual fix isn't
   -- clobbered by the next full reclassification run.
   topic_ai_manual boolean not null default false,
+  -- When the question was asked (sheet "Date of Call", else "Date Added").
+  asked_on     date,
   fingerprint  text unique not null,   -- dedupe key
   synced_at    timestamptz default now()
 );

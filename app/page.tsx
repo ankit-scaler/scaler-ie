@@ -13,7 +13,7 @@ export const dynamic = "force-dynamic";
 // re-querying Supabase on every single page load. The page itself stays
 // dynamic (it still checks the caller's session on every request).
 const getAllQuestions = unstable_cache(
-  () => fetchAllRows<Q>("questions", "id,program,company,role,round,question,related_topic,topic_ai"),
+  () => fetchAllRows<Q>("questions", "id,program,company,role,round,question,related_topic,topic_ai,asked_on"),
   ["all-questions"],
   { revalidate: 300 }
 );

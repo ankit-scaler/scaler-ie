@@ -14,6 +14,8 @@ export type Q = {
   // related_topic's raw, often-duplicated sheet text. Falls back to
   // related_topic wherever a row hasn't been classified yet.
   topic_ai: string | null;
+  // When it was asked (YYYY-MM-DD), if the sheet had a usable date.
+  asked_on?: string | null;
 };
 
 const PAGE = 30;
@@ -35,7 +37,7 @@ export default function QuestionsView({ initial, packets = [] }: { initial: Q[];
 
   const filtered = useMemo(() => {
     const qLower = state.q.trim().toLowerCase();
-    return initial.filter(x =>
+    const rows = initial.filter(x =>
       (state.program === "All" || x.program.toLowerCase() === state.program.toLowerCase()) &&
       (state.company === "All" || x.company.trim() === state.company.trim()) &&
       (state.role === "All"    || x.role.trim()    === state.role.trim()) &&
@@ -43,6 +45,12 @@ export default function QuestionsView({ initial, packets = [] }: { initial: Q[];
       (state.topic === "All"   || effectiveTopic(x) === state.topic) &&
       (!qLower || x.question.toLowerCase().includes(qLower) || effectiveTopic(x).toLowerCase().includes(qLower))
     );
+    // Newest asked first; questions without a date keep their existing
+    // order (most recently synced first) after the dated ones.
+    return rows
+      .map((x, i) => ({ x, i }))
+      .sort((a, b) => (b.x.asked_on || "").localeCompare(a.x.asked_on || "") || a.i - b.i)
+      .map(r => r.x);
   }, [initial, state]);
 
   // Fire a view event when filters narrow to a specific company+role, or to
