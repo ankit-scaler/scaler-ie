@@ -55,6 +55,25 @@ create table if not exists assignments (
 );
 create index if not exists idx_a_company_role on assignments (lower(company), lower(role));
 
+-- Apply to Jobs: daily-scraped tech job postings (see sync/sync_jobs.py).
+create table if not exists jobs (
+  id            bigserial primary key,
+  site          text not null,        -- 'linkedin' | 'naukri' | 'indeed'
+  title         text not null,
+  company       text not null,
+  location      text,
+  is_remote     boolean not null default false,
+  job_type      text,                 -- 'fulltime' | 'parttime' | 'internship' | 'contract' | ...
+  date_posted   date,
+  job_url       text not null,
+  search_role   text not null,        -- which configured search term found it
+  fingerprint   text unique not null, -- dedupe key: hash(site, job_url)
+  synced_at     timestamptz default now()
+);
+create index if not exists idx_jobs_role on jobs (lower(search_role));
+create index if not exists idx_jobs_location on jobs (lower(location));
+create index if not exists idx_jobs_posted on jobs (date_posted desc);
+
 -- ============ ADMINS ============
 create table if not exists admins (
   email text primary key,
@@ -190,6 +209,7 @@ alter table video_resource_views enable row level security;
 alter table assignment_views     enable row level security;
 alter table allowed_learners     enable row level security;
 alter table feedback             enable row level security;
+alter table jobs                 enable row level security;
 
 -- Policies aren't CREATE-IF-NOT-EXISTS-able in Postgres, and the Supabase SQL editor
 -- runs a pasted script as one transaction — one "already exists" error rolls back
@@ -206,6 +226,7 @@ drop policy if exists "insert own view" on page_views;
 drop policy if exists "own sessions rw" on sessions;
 drop policy if exists "admins read self" on admins;
 drop policy if exists "insert own feedback" on feedback;
+drop policy if exists "read jobs" on jobs;
 
 create policy "read packets" on packets for select using (auth.role() = 'authenticated');
 create policy "insert own packet view" on packet_views for insert with check (auth.jwt() ->> 'email' = user_email);
@@ -222,6 +243,7 @@ create policy "insert own feedback" on feedback for insert with check (auth.jwt(
 -- Anyone signed-in can read content
 create policy "read questions"   on questions   for select using (auth.role() = 'authenticated');
 create policy "read assignments" on assignments for select using (auth.role() = 'authenticated');
+create policy "read jobs"        on jobs        for select using (auth.role() = 'authenticated');
 
 -- Users can insert their own analytics rows; only own sessions readable
 create policy "insert own view" on page_views for insert with check (auth.jwt() ->> 'email' = user_email);
