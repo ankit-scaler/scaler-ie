@@ -1,7 +1,9 @@
 "use client";
-import { useState } from "react";
+import { useEffect, useMemo, useState } from "react";
+import { createPortal } from "react-dom";
 
 type Result = { matched: true; link: string } | { matched: false } | null;
+type PacketOption = { company: string; role: string };
 
 const EMPTY_FORM = { company: "", role: "", jd: "", interviewDate: "", contactNumber: "" };
 
@@ -11,6 +13,32 @@ export default function RequestPacketButton() {
   const [submitting, setSubmitting] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [result, setResult] = useState<Result>(null);
+  const [options, setOptions] = useState<PacketOption[]>([]);
+
+  // Loaded once, used to drive the Company/Role datalists — existing names
+  // to pick from (so a selection is guaranteed to exact-match in the
+  // backend's lookup), but a learner can still type something new if
+  // there's no entry for it yet.
+  useEffect(() => {
+    fetch("/api/packet-options")
+      .then(res => res.json())
+      .then(j => { if (j.ok) setOptions(j.options); })
+      .catch(() => {});
+  }, []);
+
+  const companies = useMemo(
+    () => Array.from(new Set(options.map(o => o.company))).sort(),
+    [options]
+  );
+  // Scoped to the currently-typed company (case-insensitive) so the Role
+  // suggestions narrow down once a company is picked — falls back to every
+  // known role when the company doesn't match anything yet.
+  const roles = useMemo(() => {
+    const cL = form.company.trim().toLowerCase();
+    const scope = cL ? options.filter(o => o.company.toLowerCase() === cL) : options;
+    const pool = scope.length ? scope : options;
+    return Array.from(new Set(pool.map(o => o.role))).sort();
+  }, [options, form.company]);
 
   const close = () => {
     setOpen(false);
@@ -18,6 +46,19 @@ export default function RequestPacketButton() {
     setError(null);
     setResult(null);
   };
+
+  // `backdrop-blur` on a full-viewport overlay forces the browser to
+  // recompute a blur over everything behind it every frame — on this page
+  // that's ~30 animated, shadowed job cards, which can visibly stall/"freeze"
+  // the tab for a moment right as the modal opens. A plain translucent
+  // overlay (no blur) costs far less to composite and reads just as clearly
+  // as a dimmed background.
+  useEffect(() => {
+    if (!open) return;
+    const onKeyDown = (e: KeyboardEvent) => { if (e.key === "Escape") close(); };
+    document.addEventListener("keydown", onKeyDown);
+    return () => document.removeEventListener("keydown", onKeyDown);
+  }, [open]);
 
   const submit = async () => {
     if (!form.company.trim() || !form.role.trim() || !form.contactNumber.trim()) {
@@ -54,8 +95,11 @@ export default function RequestPacketButton() {
         Request Packet
       </button>
 
-      {open && (
-        <div className="fixed inset-0 z-[100] flex items-center justify-center bg-ink/70 p-4 backdrop-blur-sm">
+      {open && createPortal(
+        <div
+          className="fixed inset-0 z-[100] flex items-center justify-center bg-ink/80 p-4"
+          onClick={e => { if (e.target === e.currentTarget) close(); }}
+        >
           <div className="w-full max-w-md rounded-2xl border border-edge bg-panel p-6 shadow-cardH">
             {result ? (
               <>
@@ -86,20 +130,33 @@ export default function RequestPacketButton() {
             ) : (
               <>
                 <div className="mb-1 font-mono text-[11px] uppercase tracking-widest text-mute">Request Packet</div>
-                <h2 className="mt-1 mb-4 font-display text-xl leading-snug">Looking for a specific company & role?</h2>
+                <h2 className="mt-1 font-display text-xl leading-snug">Looking for a specific company & role?</h2>
+                <p className="mb-4 text-xs text-mute">Start typing to see existing packets — pick one if it's already there, or just keep typing to request a new one.</p>
                 <div className="space-y-3">
-                  <input
-                    value={form.company}
-                    onChange={e => setForm(f => ({ ...f, company: e.target.value }))}
-                    placeholder="Company"
-                    className="w-full rounded-xl border border-edge bg-panel2 px-3 py-2 text-sm text-text placeholder:text-mute/60 focus:border-acad focus:outline-none"
-                  />
-                  <input
-                    value={form.role}
-                    onChange={e => setForm(f => ({ ...f, role: e.target.value }))}
-                    placeholder="Role"
-                    className="w-full rounded-xl border border-edge bg-panel2 px-3 py-2 text-sm text-text placeholder:text-mute/60 focus:border-acad focus:outline-none"
-                  />
+                  <div>
+                    <input
+                      list="packet-request-companies"
+                      value={form.company}
+                      onChange={e => setForm(f => ({ ...f, company: e.target.value }))}
+                      placeholder="Company"
+                      className="w-full rounded-xl border border-edge bg-panel2 px-3 py-2 text-sm text-text placeholder:text-mute/60 focus:border-acad focus:outline-none"
+                    />
+                    <datalist id="packet-request-companies">
+                      {companies.map(c => <option key={c} value={c} />)}
+                    </datalist>
+                  </div>
+                  <div>
+                    <input
+                      list="packet-request-roles"
+                      value={form.role}
+                      onChange={e => setForm(f => ({ ...f, role: e.target.value }))}
+                      placeholder="Role"
+                      className="w-full rounded-xl border border-edge bg-panel2 px-3 py-2 text-sm text-text placeholder:text-mute/60 focus:border-acad focus:outline-none"
+                    />
+                    <datalist id="packet-request-roles">
+                      {roles.map(r => <option key={r} value={r} />)}
+                    </datalist>
+                  </div>
                   <textarea
                     value={form.jd}
                     onChange={e => setForm(f => ({ ...f, jd: e.target.value }))}
@@ -135,7 +192,8 @@ export default function RequestPacketButton() {
               </>
             )}
           </div>
-        </div>
+        </div>,
+        document.body
       )}
     </>
   );
