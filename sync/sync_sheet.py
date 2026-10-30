@@ -166,6 +166,18 @@ def parse_sheet_date(raw):
             return d.isoformat()
     return None
 
+def bump_cache_versions(supa, names):
+    """Tell the website its cached copy of these datasets is out of date
+    (see lib/cached-table.ts): pages keep a day-long cache keyed on these
+    stamps, so moving them is what makes tonight's data show up. Never fails
+    the sync — if the cache_versions table isn't there yet, the site just
+    falls back to an hourly cache."""
+    now = datetime.utcnow().isoformat() + "Z"
+    try:
+        supa.table("cache_versions").upsert([{"name": n, "updated_at": now} for n in names], on_conflict="name").execute()
+    except Exception as e:
+        print(f"cache_versions bump skipped: {e}", file=sys.stderr)
+
 def dedupe_by_fp(rows):
     seen, out = set(), []
     for r in rows:
@@ -652,6 +664,8 @@ def main():
                 delete_stale(supa, "assignments", {r["fingerprint"] for r in a_rows}, only_where_null="added_by")
     except Exception as e:
         print(f"assignments error: {e}", file=sys.stderr)
+
+    bump_cache_versions(supa, ["questions", "assignments"])
 
     # --- Tracking insights -> subsheets (Sheet <- Supabase, opposite direction) ---
     try:

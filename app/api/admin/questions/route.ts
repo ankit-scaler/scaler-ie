@@ -1,4 +1,5 @@
 import { NextResponse } from "next/server";
+import { revalidateTag } from "next/cache";
 import { requireAdmin } from "@/lib/admin";
 import { supabaseAdmin } from "@/lib/supabase-server";
 
@@ -84,5 +85,6 @@ export async function POST(req: Request) {
 
   const { error } = await admin.from("questions").update({ topic_ai, topic_ai_manual: true }).eq("id", id);
   if (error) return NextResponse.json({ ok: false, error: error.message }, { status: 400 });
+  revalidateTag("questions"); // the Questions page caches for a day; show the fix now
   return NextResponse.json({ ok: true });
 }

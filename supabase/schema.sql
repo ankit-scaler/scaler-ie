@@ -309,3 +309,13 @@ from (
 where btrim(coalesce(company, '')) <> ''
 group by 1;
 grant select on company_prep_counts to authenticated;
+
+-- When each cached dataset last changed (see supabase/add_cache_versions.sql
+-- and lib/cached-table.ts). Service role only: RLS on, no policies.
+create table if not exists cache_versions (
+  name       text primary key,
+  updated_at timestamptz not null default now()
+);
+insert into cache_versions (name) values ('questions'), ('assignments'), ('jobs')
+  on conflict (name) do nothing;
+alter table cache_versions enable row level security;

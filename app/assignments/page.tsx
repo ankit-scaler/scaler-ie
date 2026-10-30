@@ -1,17 +1,16 @@
 import { redirect } from "next/navigation";
-import { unstable_cache } from "next/cache";
 import { supabaseServer } from "@/lib/supabase-server";
-import { fetchAllRows } from "@/lib/paged-fetch";
+import { fetchTableCached } from "@/lib/cached-table";
 import AssignmentsView, { A } from "@/components/AssignmentsView";
 import { getPacketLinks } from "@/lib/prep-data";
 
 export const dynamic = "force-dynamic";
 
-const getAllAssignments = unstable_cache(
-  () => fetchAllRows<A>("assignments", "id,program,company,role,round,link"),
-  ["all-assignments"],
-  { revalidate: 300, tags: ["assignments"] }
-);
+// Cached until the next sync or Admin edit (both bump/clear "assignments";
+// see lib/cached-table.ts).
+const getAllAssignments = () => fetchTableCached<A>({
+  dataset: "assignments", table: "assignments", select: "id,program,company,role,round,link",
+});
 
 export default async function Assignments() {
   const sb = supabaseServer();
