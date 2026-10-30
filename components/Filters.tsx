@@ -1,6 +1,6 @@
 "use client";
 import { useMemo } from "react";
-import { motion } from "framer-motion";
+import FilterBar, { Suggestion } from "./FilterBar";
 
 export type FilterState = {
   program: string; company: string; role: string; round: string; topic: string; q: string;
@@ -9,6 +9,11 @@ export type FilterState = {
 // Canonical spelling + display order for known programs; anything else found
 // in the data (unexpected casing, a brand-new program) is appended after.
 const CANONICAL_PROGRAMS = ["Academy", "DSML", "AIML", "DevOps"];
+
+export const EMPTY_FILTERS: FilterState = { program: "All", company: "All", role: "All", round: "All", topic: "All", q: "" };
+
+export const filtersActive = (s: FilterState) =>
+  s.program !== "All" || s.company !== "All" || s.role !== "All" || s.round !== "All" || s.topic !== "All" || s.q.trim() !== "";
 
 export default function Filters({
   data, state, setState, showRound = true, showTopic = false,
@@ -64,72 +69,56 @@ export default function Filters({
     return m;
   }, [filteredForCompany]);
 
-  const Pill = ({ value, active, onClick }: { value: string; active: boolean; onClick: () => void }) => (
-    <motion.button
-      onClick={onClick}
-      whileTap={{ scale: 0.96 }}
-      transition={{ duration: 0.1 }}
-      className={`whitespace-nowrap rounded-full border px-3 py-1.5 text-sm transition-colors duration-200 ${
-        active ? "border-text bg-text text-ink" : "border-edge text-mute hover:border-text/40 hover:text-text"
-      }`}
-    >{value}</motion.button>
-  );
+  const companyCounts = useMemo(() => {
+    const m = new Map<string, number>();
+    filteredForCompany.forEach(d => { if (d.company) m.set(d.company, (m.get(d.company) || 0) + 1); });
+    return m;
+  }, [filteredForCompany]);
 
-  const Select = ({ label, value, options, onChange, accent, optionLabel }: {
-    label: string; value: string; options: string[]; onChange: (v: string) => void; accent: string;
-    optionLabel?: (o: string) => string;
-  }) => (
-    <label className="group flex min-w-0 flex-col gap-1.5">
-      <span className={`font-mono text-[11px] font-semibold uppercase tracking-widest ${accent}`}>{label}</span>
-      <div className="relative">
-        <select
-          value={value}
-          onChange={(e) => onChange(e.target.value)}
-          className="w-full appearance-none rounded-xl border border-edge bg-panel px-3 py-2.5 pr-9 text-sm text-text transition-colors focus:border-acad focus:outline-none group-hover:border-text/40"
-        >
-          {options.map(o => <option key={o} value={o} className="bg-panel">{optionLabel ? optionLabel(o) : o}</option>)}
-        </select>
-        <svg className="pointer-events-none absolute right-3 top-1/2 h-4 w-4 -translate-y-1/2 text-mute transition-colors duration-200 group-hover:text-text" viewBox="0 0 20 20" fill="currentColor">
-          <path d="M5 8l5 5 5-5H5z" />
-        </svg>
-      </div>
-    </label>
-  );
+  const opts = (list: string[], counts?: Map<string, number>) =>
+    list.filter(o => o !== "All").map(o => ({ value: o, count: counts?.get(o) }));
+
+  // Typing in the search box offers matching companies, roles and topics;
+  // picking one sets that filter (and clears the typed text) rather than
+  // doing a loose text match, so "amazon" lands on Amazon's questions, not
+  // every question that mentions Amazon.
+  const suggestions: Suggestion[] = useMemo(() => [
+    ...companies.filter(c => c !== "All").map(c => ({
+      group: "Companies", value: c, count: companyCounts.get(c),
+      onPick: () => setState({ ...state, company: c, role: "All", round: "All", q: "" }),
+    })),
+    ...roles.filter(r => r !== "All").map(r => ({
+      group: "Roles", value: r,
+      onPick: () => setState({ ...state, role: r, round: "All", q: "" }),
+    })),
+    ...(showTopic ? topics.filter(t => t !== "All").map(t => ({
+      group: "Topics", value: t, count: topicCounts.get(t),
+      onPick: () => setState({ ...state, topic: t, q: "" }),
+    })) : []),
+  ], [companies, roles, topics, companyCounts, topicCounts, showTopic, state, setState]);
 
   return (
-    <div className="space-y-4">
-      <div className="flex flex-wrap gap-1.5">
-        {programs.map(p => (
-          <Pill key={p} value={p} active={state.program === p}
-            onClick={() => setState({ ...state, program: p, company: "All", role: "All", round: "All", topic: "All" })} />
-        ))}
-      </div>
-      <div className={`grid grid-cols-1 gap-3 sm:grid-cols-2 ${
-        showRound && showTopic ? "lg:grid-cols-5" : showRound || showTopic ? "lg:grid-cols-4" : "lg:grid-cols-3"
-      }`}>
-        <Select label="Company" value={state.company} options={companies} accent="text-acad"
-          onChange={v => setState({ ...state, company: v, role: "All", round: "All" })} />
-        <Select label="Role" value={state.role} options={roles} accent="text-dsml"
-          onChange={v => setState({ ...state, role: v, round: "All" })} />
-        {showRound && (
-          <Select label="Round" value={state.round} options={rounds} accent="text-aiml"
-            onChange={v => setState({ ...state, round: v })} />
-        )}
-        {showTopic && (
-          <Select label="Topic" value={state.topic} options={topics} accent="text-topic"
-            onChange={v => setState({ ...state, topic: v })}
-            optionLabel={o => o === "All" ? `All (${filteredForCompany.length})` : `${o} (${topicCounts.get(o) || 0})`} />
-        )}
-        <label className="group flex flex-col gap-1.5">
-          <span className="font-mono text-[11px] font-semibold uppercase tracking-widest text-devops">Search</span>
-          <input
-            value={state.q}
-            onChange={e => setState({ ...state, q: e.target.value })}
-            placeholder="keyword..."
-            className="rounded-xl border border-edge bg-panel px-3 py-2.5 text-sm text-text placeholder:text-mute/60 transition-colors focus:border-acad focus:outline-none group-hover:border-text/40"
-          />
-        </label>
-      </div>
-    </div>
+    <FilterBar
+      search={state.q}
+      onSearch={q => setState({ ...state, q })}
+      placeholder={showTopic ? "Search a company, role, topic or keyword" : "Search a company or role"}
+      suggestions={suggestions}
+      segments={{
+        value: state.program,
+        options: programs.map(p => ({ value: p, label: p })),
+        onChange: p => setState({ ...state, program: p, company: "All", role: "All", round: "All", topic: "All" }),
+      }}
+      facets={[
+        { key: "company", label: "Company", value: state.company, options: opts(companies, companyCounts),
+          onChange: v => setState({ ...state, company: v, role: "All", round: "All" }) },
+        { key: "role", label: "Role", value: state.role, options: opts(roles),
+          onChange: v => setState({ ...state, role: v, round: "All" }) },
+        ...(showRound ? [{ key: "round", label: "Round", value: state.round, options: opts(rounds),
+          onChange: (v: string) => setState({ ...state, round: v }) }] : []),
+        ...(showTopic ? [{ key: "topic", label: "Topic", value: state.topic, options: opts(topics, topicCounts),
+          onChange: (v: string) => setState({ ...state, topic: v }) }] : []),
+      ]}
+      onClearAll={() => setState(EMPTY_FILTERS)}
+    />
   );
 }
