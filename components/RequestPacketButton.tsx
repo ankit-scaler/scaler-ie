@@ -1,8 +1,9 @@
 "use client";
-import { useEffect, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import { createPortal } from "react-dom";
 
 type Result = { matched: true; link: string } | { matched: false } | null;
+type PacketOption = { company: string; role: string };
 
 const EMPTY_FORM = { company: "", role: "", jd: "", interviewDate: "", contactNumber: "" };
 
@@ -12,6 +13,32 @@ export default function RequestPacketButton() {
   const [submitting, setSubmitting] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [result, setResult] = useState<Result>(null);
+  const [options, setOptions] = useState<PacketOption[]>([]);
+
+  // Loaded once, used to drive the Company/Role datalists — existing names
+  // to pick from (so a selection is guaranteed to exact-match in the
+  // backend's lookup), but a learner can still type something new if
+  // there's no entry for it yet.
+  useEffect(() => {
+    fetch("/api/packet-options")
+      .then(res => res.json())
+      .then(j => { if (j.ok) setOptions(j.options); })
+      .catch(() => {});
+  }, []);
+
+  const companies = useMemo(
+    () => Array.from(new Set(options.map(o => o.company))).sort(),
+    [options]
+  );
+  // Scoped to the currently-typed company (case-insensitive) so the Role
+  // suggestions narrow down once a company is picked — falls back to every
+  // known role when the company doesn't match anything yet.
+  const roles = useMemo(() => {
+    const cL = form.company.trim().toLowerCase();
+    const scope = cL ? options.filter(o => o.company.toLowerCase() === cL) : options;
+    const pool = scope.length ? scope : options;
+    return Array.from(new Set(pool.map(o => o.role))).sort();
+  }, [options, form.company]);
 
   const close = () => {
     setOpen(false);
@@ -103,20 +130,33 @@ export default function RequestPacketButton() {
             ) : (
               <>
                 <div className="mb-1 font-mono text-[11px] uppercase tracking-widest text-mute">Request Packet</div>
-                <h2 className="mt-1 mb-4 font-display text-xl leading-snug">Looking for a specific company & role?</h2>
+                <h2 className="mt-1 font-display text-xl leading-snug">Looking for a specific company & role?</h2>
+                <p className="mb-4 text-xs text-mute">Start typing to see existing packets — pick one if it's already there, or just keep typing to request a new one.</p>
                 <div className="space-y-3">
-                  <input
-                    value={form.company}
-                    onChange={e => setForm(f => ({ ...f, company: e.target.value }))}
-                    placeholder="Company"
-                    className="w-full rounded-xl border border-edge bg-panel2 px-3 py-2 text-sm text-text placeholder:text-mute/60 focus:border-acad focus:outline-none"
-                  />
-                  <input
-                    value={form.role}
-                    onChange={e => setForm(f => ({ ...f, role: e.target.value }))}
-                    placeholder="Role"
-                    className="w-full rounded-xl border border-edge bg-panel2 px-3 py-2 text-sm text-text placeholder:text-mute/60 focus:border-acad focus:outline-none"
-                  />
+                  <div>
+                    <input
+                      list="packet-request-companies"
+                      value={form.company}
+                      onChange={e => setForm(f => ({ ...f, company: e.target.value }))}
+                      placeholder="Company"
+                      className="w-full rounded-xl border border-edge bg-panel2 px-3 py-2 text-sm text-text placeholder:text-mute/60 focus:border-acad focus:outline-none"
+                    />
+                    <datalist id="packet-request-companies">
+                      {companies.map(c => <option key={c} value={c} />)}
+                    </datalist>
+                  </div>
+                  <div>
+                    <input
+                      list="packet-request-roles"
+                      value={form.role}
+                      onChange={e => setForm(f => ({ ...f, role: e.target.value }))}
+                      placeholder="Role"
+                      className="w-full rounded-xl border border-edge bg-panel2 px-3 py-2 text-sm text-text placeholder:text-mute/60 focus:border-acad focus:outline-none"
+                    />
+                    <datalist id="packet-request-roles">
+                      {roles.map(r => <option key={r} value={r} />)}
+                    </datalist>
+                  </div>
                   <textarea
                     value={form.jd}
                     onChange={e => setForm(f => ({ ...f, jd: e.target.value }))}
