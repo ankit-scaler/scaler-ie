@@ -33,7 +33,10 @@ PRUNE_AFTER_DAYS = 30
 CALL_DELAY_SECONDS = 3
 
 def norm(s):
-    if s is None:
+    # A missing cell from df.to_dict("records") isn't always None — for
+    # JobSpy's string-dtype columns it comes back as float('nan'), which
+    # str()'s straight to the literal text "nan" if not caught here.
+    if s is None or (isinstance(s, float) and pd.isna(s)):
         return ""
     return str(s).strip()
 
@@ -113,6 +116,16 @@ def run(dry_run: bool):
             print(f"[{i}] FAILED {label}: {e}", file=sys.stderr)
             continue
 
+        # JobSpy catches each site's own scraper errors internally and
+        # reports them here instead of raising — a blocked/broken site
+        # still returns a (possibly empty) DataFrame from other sites, so
+        # the try/except above never sees it. Surface it explicitly so a
+        # partially-blocked run is visible in the log, not just a lower
+        # row count with no indication why.
+        site_errors = getattr(df, "attrs", {}).get("errors") or {}
+        for site, error in site_errors.items():
+            print(f"[{i}] {label}: {site} failed: {error}", file=sys.stderr)
+
         rows = rows_from_results(df, role)
         total_found += len(rows)
         for row in rows:
@@ -121,6 +134,13 @@ def run(dry_run: bool):
         time.sleep(CALL_DELAY_SECONDS)
 
     rows = list(rows_by_fp.values())
+    if total_found == 0:
+        # Every combo either errored or came back empty — could be a
+        # code/config bug, or every site blocking this run outright.
+        # Exit 0 either way (a transient block shouldn't fail the cron and
+        # start paging someone), but make it loud in the log.
+        print("WARNING: 0 rows scraped across every search combo this run.", file=sys.stderr)
+
     if dry_run:
         print(f"DRY RUN: would upsert {len(rows)} unique rows (from {total_found} raw results)")
         return
