@@ -1,10 +1,13 @@
 "use client";
 import { useMemo, useState } from "react";
-import Link from "next/link";
 import { motion } from "framer-motion";
 import { PacketListItem, TRACK_LABELS, YOE_LABELS, Track, YoeBucket } from "@/lib/packets-db";
 
 const PAGE = 30;
+// The actual reader lives in the separate Packets Generator app (same one
+// this page's data comes from) — "Open Link" sends the learner there by
+// slug rather than rendering rounds/questions natively in this app.
+const PACKET_GENERATOR_BASE = "https://interview-experiences-packets-creat.vercel.app/p/";
 
 const BAR: Record<Track, string> = { ACADEMY: "bg-acad", DEVOPS: "bg-devops", AIML: "bg-aiml", DSML: "bg-dsml" };
 const BADGE: Record<Track, string> = {
@@ -40,7 +43,7 @@ export default function CompanyPacketsView({ initial }: { initial: PacketListIte
       <section>
         <span className="font-mono text-[11px] uppercase tracking-widest text-mute">Packets</span>
         <h1 className="mt-1 font-display text-4xl leading-tight sm:text-5xl">
-          Company packets,<br /><span className="text-mute">round by round.</span>
+          Company packets,<br /><span className="text-mute">one link away.</span>
         </h1>
       </section>
 
@@ -87,10 +90,7 @@ export default function CompanyPacketsView({ initial }: { initial: PacketListIte
                 transition={{ duration: 0.3, delay: Math.min(i * 0.02, 0.3) }}
                 whileHover={{ y: -3 }}
               >
-                <Link
-                  href={`/company-packets/${p.slug}`}
-                  className="group relative flex h-full flex-col overflow-hidden rounded-2xl border border-edge bg-panel p-5 shadow-card transition-shadow hover:shadow-cardH"
-                >
+                <div className="group relative flex h-full flex-col overflow-hidden rounded-2xl border border-edge bg-panel p-5 shadow-card transition-shadow hover:shadow-cardH">
                   <div className={`absolute inset-x-0 top-0 h-[3px] ${BAR[p.track]}`} />
                   <div className="mb-3 flex flex-wrap items-center gap-2 text-xs">
                     <span className={`rounded-full border px-3 py-1 font-medium ${BADGE[p.track]}`}>{TRACK_LABELS[p.track]}</span>
@@ -98,7 +98,15 @@ export default function CompanyPacketsView({ initial }: { initial: PacketListIte
                   </div>
                   <div className="font-display text-lg leading-snug">{p.company}</div>
                   <div className="mt-1 text-sm text-mute">{p.role}</div>
-                </Link>
+                  <a
+                    href={`${PACKET_GENERATOR_BASE}${p.slug}`}
+                    target="_blank" rel="noopener noreferrer"
+                    className="mt-4 inline-flex w-fit items-center gap-2 rounded-xl border border-edge bg-panel2 px-3.5 py-2 text-sm text-text transition hover:border-text/40"
+                  >
+                    Open Link
+                    <svg className="h-3.5 w-3.5" viewBox="0 0 20 20" fill="currentColor"><path d="M7 3h10v10h-2V6.4L4.7 16.7 3.3 15.3 13.6 5H7V3z"/></svg>
+                  </a>
+                </div>
               </motion.div>
             ))}
           </div>
