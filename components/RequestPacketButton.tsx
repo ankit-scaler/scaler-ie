@@ -1,5 +1,5 @@
 "use client";
-import { useState } from "react";
+import { useEffect, useState } from "react";
 
 type Result = { matched: true; link: string } | { matched: false } | null;
 
@@ -18,6 +18,19 @@ export default function RequestPacketButton() {
     setError(null);
     setResult(null);
   };
+
+  // `backdrop-blur` on a full-viewport overlay forces the browser to
+  // recompute a blur over everything behind it every frame — on this page
+  // that's ~30 animated, shadowed job cards, which can visibly stall/"freeze"
+  // the tab for a moment right as the modal opens. A plain translucent
+  // overlay (no blur) costs far less to composite and reads just as clearly
+  // as a dimmed background.
+  useEffect(() => {
+    if (!open) return;
+    const onKeyDown = (e: KeyboardEvent) => { if (e.key === "Escape") close(); };
+    document.addEventListener("keydown", onKeyDown);
+    return () => document.removeEventListener("keydown", onKeyDown);
+  }, [open]);
 
   const submit = async () => {
     if (!form.company.trim() || !form.role.trim() || !form.contactNumber.trim()) {
@@ -55,7 +68,10 @@ export default function RequestPacketButton() {
       </button>
 
       {open && (
-        <div className="fixed inset-0 z-[100] flex items-center justify-center bg-ink/70 p-4 backdrop-blur-sm">
+        <div
+          className="fixed inset-0 z-[100] flex items-center justify-center bg-ink/80 p-4"
+          onClick={e => { if (e.target === e.currentTarget) close(); }}
+        >
           <div className="w-full max-w-md rounded-2xl border border-edge bg-panel p-6 shadow-cardH">
             {result ? (
               <>
