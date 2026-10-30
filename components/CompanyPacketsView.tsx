@@ -17,8 +17,8 @@ const BADGE: Record<Track, string> = {
   DSML:    "border-dsml/30 bg-dsml/10 text-dsml",
 };
 
-type State = { track: "All" | Track; yoe: "All" | YoeBucket; q: string };
-const DEFAULT_STATE: State = { track: "All", yoe: "All", q: "" };
+type State = { track: "All" | Track; yoe: "All" | YoeBucket; company: string; role: string; q: string };
+const DEFAULT_STATE: State = { track: "All", yoe: "All", company: "All", role: "All", q: "" };
 
 export default function CompanyPacketsView({ initial }: { initial: PacketListItem[] }) {
   const [state, setState] = useState<State>(DEFAULT_STATE);
@@ -29,11 +29,32 @@ export default function CompanyPacketsView({ initial }: { initial: PacketListIte
     [initial]
   );
 
+  // Cascading: Company options are scoped to the current Track/YoE pick,
+  // and Role options are further scoped to the current Company pick — same
+  // pattern as the Questions/Assignments filters.
+  const scopedForCompany = useMemo(
+    () => initial.filter(p =>
+      (state.track === "All" || p.track === state.track) &&
+      (state.yoe === "All" || p.yoeBucket === state.yoe)
+    ),
+    [initial, state.track, state.yoe]
+  );
+  const companies = useMemo(
+    () => ["All", ...Array.from(new Set(scopedForCompany.map(p => p.company))).sort()],
+    [scopedForCompany]
+  );
+  const roles = useMemo(() => {
+    const scope = state.company === "All" ? scopedForCompany : scopedForCompany.filter(p => p.company === state.company);
+    return ["All", ...Array.from(new Set(scope.map(p => p.role))).sort()];
+  }, [scopedForCompany, state.company]);
+
   const filtered = useMemo(() => {
     const qL = state.q.trim().toLowerCase();
     return initial.filter(p =>
       (state.track === "All" || p.track === state.track) &&
       (state.yoe === "All" || p.yoeBucket === state.yoe) &&
+      (state.company === "All" || p.company === state.company) &&
+      (state.role === "All" || p.role === state.role) &&
       (!qL || `${p.company} ${p.role}`.toLowerCase().includes(qL))
     );
   }, [initial, state]);
@@ -56,7 +77,7 @@ export default function CompanyPacketsView({ initial }: { initial: PacketListIte
         />
         <select
           value={state.track}
-          onChange={e => { setState(s => ({ ...s, track: e.target.value as State["track"] })); setVisible(PAGE); }}
+          onChange={e => { setState(s => ({ ...s, track: e.target.value as State["track"], company: "All", role: "All" })); setVisible(PAGE); }}
           className="rounded-xl border border-edge bg-panel px-3 py-2 text-sm text-text"
         >
           <option value="All">All tracks</option>
@@ -64,11 +85,27 @@ export default function CompanyPacketsView({ initial }: { initial: PacketListIte
         </select>
         <select
           value={state.yoe}
-          onChange={e => { setState(s => ({ ...s, yoe: e.target.value as State["yoe"] })); setVisible(PAGE); }}
+          onChange={e => { setState(s => ({ ...s, yoe: e.target.value as State["yoe"], company: "All", role: "All" })); setVisible(PAGE); }}
           className="rounded-xl border border-edge bg-panel px-3 py-2 text-sm text-text"
         >
           <option value="All">All experience</option>
           {(Object.keys(YOE_LABELS) as YoeBucket[]).map(y => <option key={y} value={y}>{YOE_LABELS[y]}</option>)}
+        </select>
+        <select
+          value={state.company}
+          onChange={e => { setState(s => ({ ...s, company: e.target.value, role: "All" })); setVisible(PAGE); }}
+          className="rounded-xl border border-edge bg-panel px-3 py-2 text-sm text-text"
+        >
+          <option value="All">All companies</option>
+          {companies.filter(c => c !== "All").map(c => <option key={c} value={c}>{c}</option>)}
+        </select>
+        <select
+          value={state.role}
+          onChange={e => { setState(s => ({ ...s, role: e.target.value })); setVisible(PAGE); }}
+          className="rounded-xl border border-edge bg-panel px-3 py-2 text-sm text-text"
+        >
+          <option value="All">All roles</option>
+          {roles.filter(r => r !== "All").map(r => <option key={r} value={r}>{r}</option>)}
         </select>
       </section>
 
