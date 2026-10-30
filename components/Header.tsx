@@ -144,7 +144,7 @@ export default function Header() {
         </div>
 
         {email && (
-          <nav aria-label="Main" className="hidden min-w-0 flex-1 items-center justify-center gap-2 md:flex">
+          <nav aria-label="Main" className="hidden min-w-0 flex-1 items-center justify-start gap-2 overflow-x-auto [-ms-overflow-style:none] [scrollbar-width:none] [&::-webkit-scrollbar]:hidden md:flex">
             {TABS.map(t => tab(t.href, t.label, t.match(path || "")))}
             <span className="mx-1 h-5 w-px shrink-0 self-center bg-edge" aria-hidden />
             <Link
@@ -163,39 +163,49 @@ export default function Header() {
         <div className="flex shrink-0 items-center gap-2">
           {!isPacketOpen && <ThemeToggle />}
           {email ? (
-            <div className="relative" ref={accountMenuRef}>
+            <>
               <button
-                onClick={() => setAccountMenuOpen(v => !v)}
-                aria-expanded={accountMenuOpen}
-                aria-haspopup="menu"
-                aria-label="Account menu"
-                className="flex items-center gap-1.5 rounded-full border border-edge py-1 pl-1 pr-2 text-sm text-mute transition-colors duration-200 hover:border-text/40 hover:text-text"
+                onClick={signOut}
+                disabled={signingOut}
+                title={signingOut ? "Signing out…" : "Sign out"}
+                aria-label="Sign out"
+                className="flex h-9 w-9 items-center justify-center rounded-full border border-edge text-mute transition-colors duration-200 hover:border-text/40 hover:bg-panel2 hover:text-text disabled:opacity-50"
               >
-                <span className="flex h-6 w-6 items-center justify-center rounded-full bg-panel2 font-medium uppercase text-text">{email[0]}</span>
-                <svg
-                  className={`h-3.5 w-3.5 transition-transform duration-200 ${accountMenuOpen ? "rotate-180" : ""}`}
-                  viewBox="0 0 20 20" fill="none" aria-hidden
-                ><path d="M5.5 7.5l4.5 4.5 4.5-4.5" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round"/></svg>
+                <svg className="h-4 w-4" viewBox="0 0 20 20" fill="none" aria-hidden>
+                  <path d="M8 3H5a1 1 0 0 0-1 1v12a1 1 0 0 0 1 1h3" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round"/>
+                  <path d="M13 13.5l3.5-3.5L13 6.5M7 10h9.5" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round"/>
+                </svg>
               </button>
-              {accountMenuOpen && (
-                <div role="menu" className="absolute right-0 top-full z-50 mt-2 w-60 overflow-hidden rounded-xl border border-edge bg-panel shadow-card divide-y divide-edge/60">
-                  <div className="truncate px-4 py-2.5 text-xs text-mute" title={email}>{email}</div>
-                  {isAdmin && (
-                    <div>
-                      <Link role="menuitem" href="/admin/tracking" className={menuItem}>Tracking</Link>
-                      <Link role="menuitem" href="/admin/access" className={menuItem}>Access management</Link>
-                      <Link role="menuitem" href="/admin/content" className={menuItem}>Content management</Link>
-                    </div>
-                  )}
-                  <button
-                    role="menuitem"
-                    onClick={signOut}
-                    disabled={signingOut}
-                    className={`${menuItem} w-full text-left disabled:opacity-50`}
-                  >{signingOut ? "Signing out…" : "Sign out"}</button>
-                </div>
-              )}
-            </div>
+              <div className="relative" ref={accountMenuRef}>
+                <button
+                  onClick={() => setAccountMenuOpen(v => !v)}
+                  title={email}
+                  aria-label="Account"
+                  aria-expanded={accountMenuOpen}
+                  aria-haspopup="menu"
+                  className="flex h-9 w-9 items-center justify-center rounded-full border border-edge text-mute transition-colors duration-200 hover:border-text/40 hover:bg-panel2 hover:text-text"
+                >
+                  <svg className="h-4 w-4" viewBox="0 0 20 20" fill="none" aria-hidden>
+                    <circle cx="10" cy="7" r="3" stroke="currentColor" strokeWidth="1.5"/>
+                    <path d="M4 17c0-3 2.7-5 6-5s6 2 6 5" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round"/>
+                    <path d="M5.8 5.3a2.3 2.3 0 1 0 .3 4.5M14.2 5.3a2.3 2.3 0 1 1-.3 4.5" stroke="currentColor" strokeWidth="1.3" strokeLinecap="round"/>
+                    <path d="M1.8 16c.3-2 2-3.3 4-3.5M18.2 16c-.3-2-2-3.3-4-3.5" stroke="currentColor" strokeWidth="1.3" strokeLinecap="round"/>
+                  </svg>
+                </button>
+                {accountMenuOpen && (
+                  <div role="menu" className="absolute right-0 top-full z-50 mt-2 w-60 overflow-hidden rounded-xl border border-edge bg-panel shadow-card">
+                    <div className="truncate px-4 py-2.5 font-mono text-xs text-mute">{email}</div>
+                    {isAdmin && (
+                      <div className="divide-y divide-edge/60 border-t border-edge/60">
+                        <Link role="menuitem" href="/admin/tracking" className={menuItem}>Tracking</Link>
+                        <Link role="menuitem" href="/admin/access" className={menuItem}>Access management</Link>
+                        <Link role="menuitem" href="/admin/content" className={menuItem}>Content management</Link>
+                      </div>
+                    )}
+                  </div>
+                )}
+              </div>
+            </>
           ) : path !== "/login" && (
             // The login page has its own "Continue with Google" button —
             // a second Sign in here would be two buttons doing one thing.
