@@ -1,16 +1,14 @@
 "use client";
+import Link from "next/link";
 import { useMemo, useState } from "react";
 import FilterBar, { EmptyState } from "@/components/FilterBar";
 import { useUrlState } from "@/lib/useUrlState";
+import { PACKET_GENERATOR_BASE, PrepCounts, companyKey } from "@/lib/prep-shared";
 import { motion } from "framer-motion";
 import PacketsSwitch from "@/components/PacketsSwitch";
 import { PacketListItem, TRACK_LABELS, YOE_LABELS, Track, YoeBucket } from "@/lib/packets-db";
 
 const PAGE = 30;
-// The actual reader lives in the separate Packets Generator app (same one
-// this page's data comes from) — "Open Link" sends the learner there by
-// slug rather than rendering rounds/questions natively in this app.
-const PACKET_GENERATOR_BASE = "https://interview-experiences-packets-creat.vercel.app/p/";
 
 const BAR: Record<Track, string> = { ACADEMY: "bg-acad", DEVOPS: "bg-devops", AIML: "bg-aiml", DSML: "bg-dsml" };
 const BADGE: Record<Track, string> = {
@@ -24,7 +22,7 @@ const BADGE: Record<Track, string> = {
 type State = { track: string; yoe: string; company: string; role: string; q: string };
 const DEFAULT_STATE: State = { track: "All", yoe: "All", company: "All", role: "All", q: "" };
 
-export default function CompanyPacketsView({ initial }: { initial: PacketListItem[] }) {
+export default function CompanyPacketsView({ initial, prep = {} }: { initial: PacketListItem[]; prep?: PrepCounts }) {
   const [state, setState] = useUrlState<State>(DEFAULT_STATE);
   const [visible, setVisible] = useState(PAGE);
 
@@ -132,6 +130,7 @@ export default function CompanyPacketsView({ initial }: { initial: PacketListIte
                   </div>
                   <div className="font-display text-lg leading-snug">{p.company}</div>
                   <div className="mt-1 text-sm text-mute">{p.role}</div>
+                  <PrepLinks counts={prep[companyKey(p.company)]} />
                   <a
                     href={`${PACKET_GENERATOR_BASE}${p.slug}`}
                     target="_blank" rel="noopener noreferrer"
@@ -154,6 +153,27 @@ export default function CompanyPacketsView({ initial }: { initial: PacketListIte
           </div>
         )}
       </section>
+    </div>
+  );
+}
+
+// "Also for <company>": the vault's other prep for the same company, so a
+// learner who opens a packet card finds the past questions, assignments
+// and open jobs too. Only links with something behind them are shown.
+function PrepLinks({ counts }: { counts?: { company: string; questions: number; assignments: number; jobs: number } }) {
+  if (!counts) return null;
+  const c = encodeURIComponent(counts.company);
+  const links = [
+    counts.questions > 0 && { href: `/?company=${c}&ref=packet`, label: `${counts.questions.toLocaleString()} past question${counts.questions === 1 ? "" : "s"}` },
+    counts.assignments > 0 && { href: `/assignments?company=${c}&ref=packet`, label: `${counts.assignments} assignment${counts.assignments === 1 ? "" : "s"}` },
+    counts.jobs > 0 && { href: `/jobs?q=${c}&ref=packet`, label: `${counts.jobs} open job${counts.jobs === 1 ? "" : "s"}` },
+  ].filter(Boolean) as { href: string; label: string }[];
+  if (links.length === 0) return null;
+  return (
+    <div className="mt-3 flex flex-wrap gap-x-3 gap-y-1 text-sm">
+      {links.map(l => (
+        <Link key={l.href} href={l.href} className="text-acad underline-offset-4 hover:underline">{l.label} →</Link>
+      ))}
     </div>
   );
 }

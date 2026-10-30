@@ -3,13 +3,15 @@ import { useMemo, useEffect } from "react";
 import Filters, { FilterState, EMPTY_FILTERS, filtersActive } from "./Filters";
 import { EmptyState } from "./FilterBar";
 import AssignmentCard from "./AssignmentCard";
+import PacketBanner from "./PacketBanner";
+import type { PacketLink } from "@/lib/prep-shared";
 import { useUrlFilterState } from "@/lib/useUrlFilterState";
 
 export type A = { id: number; program: string | null; company: string; role: string; round: string | null; link: string | null };
 
 const DEFAULT_STATE: FilterState = { program: "All", company: "All", role: "All", round: "All", topic: "All", q: "" };
 
-export default function AssignmentsView({ initial }: { initial: A[] }) {
+export default function AssignmentsView({ initial, packets = [] }: { initial: A[]; packets?: PacketLink[] }) {
   const [state, setState] = useUrlFilterState(DEFAULT_STATE);
 
   const filterData = useMemo(
@@ -53,6 +55,7 @@ export default function AssignmentsView({ initial }: { initial: A[] }) {
       <Filters data={filterData} state={state} setState={setState} showRound={false} />
 
       <section>
+        <PacketBanner company={state.company} packets={packets} />
         <div className="mb-3 font-mono text-sm text-mute">
           {filtered.length.toLocaleString()} assignment{filtered.length === 1 ? "" : "s"}
         </div>

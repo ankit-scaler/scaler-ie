@@ -3,6 +3,7 @@ import { useEffect, useMemo, useState } from "react";
 import JobRow from "./JobRow";
 import FilterBar, { EmptyState } from "./FilterBar";
 import { useUrlState } from "@/lib/useUrlState";
+import { PacketLink, PrepCounts, companyKey } from "@/lib/prep-shared";
 
 export type Job = {
   id: number;
@@ -90,7 +91,7 @@ function matchesLocation(job: Job, selected: string): boolean {
   return city.match.some(alias => loc.includes(alias));
 }
 
-export default function JobsView({ initial }: { initial: Job[] }) {
+export default function JobsView({ initial, prep = {}, packets = [] }: { initial: Job[]; prep?: PrepCounts; packets?: PacketLink[] }) {
   const [state, setState] = useUrlState<State>(DEFAULT_STATE);
   const [visible, setVisible] = useState(PAGE);
 
@@ -123,6 +124,21 @@ export default function JobsView({ initial }: { initial: Job[] }) {
     return Array.from(m.entries()).sort((a, b) => b[1] - a[1]).slice(0, 300);
   }, [initial]);
   const active = JSON.stringify(state) !== JSON.stringify(DEFAULT_STATE);
+
+  // A job at a company the vault has prep for gets a "Prepare" link:
+  // to its past questions if there are any, otherwise to its packets.
+  const packetCompanies = useMemo(() => {
+    const m = new Map<string, string>();
+    packets.forEach(p => m.set(companyKey(p.company), p.company));
+    return m;
+  }, [packets]);
+  const prepHref = (company: string): string | undefined => {
+    const key = companyKey(company);
+    if (prep[key]?.questions) return `/?company=${encodeURIComponent(prep[key].company)}&ref=job`;
+    const packetCompany = packetCompanies.get(key);
+    if (packetCompany) return `/company-packets?company=${encodeURIComponent(packetCompany)}&ref=job`;
+    return undefined;
+  };
 
   const filtered = useMemo(() => {
     const qL = state.q.trim().toLowerCase();
@@ -199,7 +215,7 @@ export default function JobsView({ initial }: { initial: Job[] }) {
           <EmptyState onClear={active ? () => setState(DEFAULT_STATE) : undefined} />
         ) : (
           <div className="flex flex-col gap-3">
-            {filtered.slice(0, visible).map((j, i) => <JobRow key={j.id} job={j} category={categoryOf(j.title)} index={i} />)}
+            {filtered.slice(0, visible).map((j, i) => <JobRow key={j.id} job={j} category={categoryOf(j.title)} index={i} prepHref={prepHref(j.company)} />)}
           </div>
         )}
         {visible < filtered.length && (

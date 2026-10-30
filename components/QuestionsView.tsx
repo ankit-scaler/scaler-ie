@@ -3,6 +3,8 @@ import { useMemo, useState, useEffect } from "react";
 import Filters, { FilterState, EMPTY_FILTERS, filtersActive } from "./Filters";
 import { EmptyState } from "./FilterBar";
 import QuestionCard from "./QuestionCard";
+import PacketBanner from "./PacketBanner";
+import type { PacketLink } from "@/lib/prep-shared";
 import { useUrlFilterState } from "@/lib/useUrlFilterState";
 
 export type Q = {
@@ -19,7 +21,7 @@ const DEFAULT_STATE: FilterState = { program: "All", company: "All", role: "All"
 
 const effectiveTopic = (x: Q) => (x.topic_ai || x.related_topic || "").trim();
 
-export default function QuestionsView({ initial }: { initial: Q[] }) {
+export default function QuestionsView({ initial, packets = [] }: { initial: Q[]; packets?: PacketLink[] }) {
   const [state, setState] = useUrlFilterState(DEFAULT_STATE);
   const [visible, setVisible] = useState(PAGE);
 
@@ -79,6 +81,7 @@ export default function QuestionsView({ initial }: { initial: Q[] }) {
       </section>
 
       <section>
+        <PacketBanner company={state.company} packets={packets} />
         <div className="mb-3 flex items-baseline justify-between">
           <span className="font-mono text-sm text-mute">
             {filtered.length.toLocaleString()} match{filtered.length === 1 ? "" : "es"}

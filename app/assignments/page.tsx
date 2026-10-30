@@ -3,6 +3,7 @@ import { unstable_cache } from "next/cache";
 import { supabaseServer } from "@/lib/supabase-server";
 import { fetchAllRows } from "@/lib/paged-fetch";
 import AssignmentsView, { A } from "@/components/AssignmentsView";
+import { getPacketLinks } from "@/lib/prep-data";
 
 export const dynamic = "force-dynamic";
 
@@ -17,6 +18,6 @@ export default async function Assignments() {
   const { data: { user } } = await sb.auth.getUser();
   if (!user) redirect("/login");
 
-  const all = await getAllAssignments();
-  return <AssignmentsView initial={all} />;
+  const [all, packets] = await Promise.all([getAllAssignments(), getPacketLinks()]);
+  return <AssignmentsView initial={all} packets={packets} />;
 }
