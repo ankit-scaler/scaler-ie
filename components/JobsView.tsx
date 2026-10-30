@@ -187,7 +187,7 @@ export default function JobsView({ initial }: { initial: Job[] }) {
           </div>
         ) : (
           <div className="flex flex-col gap-3">
-            {filtered.slice(0, visible).map((j, i) => <JobRow key={j.id} job={j} index={i} />)}
+            {filtered.slice(0, visible).map((j, i) => <JobRow key={j.id} job={j} category={categoryOf(j.title)} index={i} />)}
           </div>
         )}
         {visible < filtered.length && (
