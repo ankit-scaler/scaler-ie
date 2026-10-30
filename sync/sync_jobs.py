@@ -1,0 +1,140 @@
+"""
+Daily sync: scrapes tech job postings via JobSpy and upserts them into
+Supabase. Run once a day by .github/workflows/daily-jobs-sync.yml, reusing
+the same SUPABASE_URL/SUPABASE_SERVICE_KEY secrets as sync_sheet.py.
+Never called live from the Next.js app — see
+docs/superpowers/specs/2026-10-29-apply-to-jobs-design.md for why.
+"""
+import argparse, hashlib, os, sys, time
+from datetime import datetime, timedelta, timezone
+import pandas as pd
+from jobspy import scrape_jobs
+from supabase import create_client
+
+SITES = ["linkedin", "naukri", "indeed"]
+ROLES = [
+    "Software Engineer",
+    "AI Engineer",
+    "Machine Learning Engineer",
+    "Data Analyst",
+    "Data Scientist",
+    "Forward Deployed Engineer",
+    "Engineering Manager",
+    "Program Manager",
+]
+CITIES = ["Bangalore, India", "Hyderabad, India", "Pune, India", "Gurgaon, India", "Mumbai, India", "Chennai, India"]
+RESULTS_WANTED = 15
+HOURS_OLD = 48
+PRUNE_AFTER_DAYS = 30
+# Pause between scrape_jobs() calls so ~56 back-to-back requests don't trip
+# a site's rate limiter any faster than normal, spaced-out traffic would.
+# Sites may still block some calls regardless (see the per-call try/except
+# in run()) — that's expected and handled, not prevented, by this delay.
+CALL_DELAY_SECONDS = 3
+
+def norm(s):
+    if s is None:
+        return ""
+    return str(s).strip()
+
+def fp(*parts):
+    return hashlib.sha256("||".join(str(p or "") for p in parts).encode()).hexdigest()
+
+def search_combos():
+    """Yields (role, location, is_remote) for every role x city, plus one
+    remote-scoped search per role."""
+    for role in ROLES:
+        for city in CITIES:
+            yield role, city, False
+        yield role, "India", True
+
+def rows_from_results(df: "pd.DataFrame | None", role: str) -> list[dict]:
+    if df is None or len(df) == 0:
+        return []
+    out = []
+    for r in df.to_dict("records"):
+        job_url = norm(r.get("job_url"))
+        title = norm(r.get("title"))
+        company = norm(r.get("company"))
+        site = norm(r.get("site"))
+        # A row with no URL/title/company isn't something a user can act
+        # on — skip rather than write a dead "Apply" link.
+        if not job_url or not title or not company:
+            continue
+        date_posted = r.get("date_posted")
+        date_posted_iso = date_posted.isoformat() if pd.notna(date_posted) else None
+        is_remote = bool(r.get("is_remote")) if pd.notna(r.get("is_remote")) else False
+        job_type = norm(r.get("job_type")) or None
+        out.append({
+            "site": site,
+            "title": title,
+            "company": company,
+            "location": norm(r.get("location")) or None,
+            "is_remote": is_remote,
+            "job_type": job_type,
+            "date_posted": date_posted_iso,
+            "job_url": job_url,
+            "search_role": role,
+            # Deliberately (site, job_url) only — not role/location — so the
+            # same posting found by two different searches (e.g. it matches
+            # both "Software Engineer" and "Engineering Manager", or shows
+            # up for both a city search and the remote search) dedupes to
+            # one row instead of duplicating.
+            "fingerprint": fp(site, job_url),
+            # Supabase's `default now()` only fires on INSERT, never on an
+            # upsert's UPDATE path — set it explicitly on every row so a
+            # posting that's still being found every day keeps its freshness
+            # clock current, instead of aging past PRUNE_AFTER_DAYS from its
+            # original insert while still actually live.
+            "synced_at": datetime.now(timezone.utc).isoformat(),
+        })
+    return out
+
+def run(dry_run: bool):
+    supa = None if dry_run else create_client(os.environ["SUPABASE_URL"], os.environ["SUPABASE_SERVICE_KEY"])
+    total_found = 0
+    rows_by_fp: dict[str, dict] = {}
+
+    for i, (role, location, is_remote) in enumerate(search_combos()):
+        label = f"{role!r} @ {location}{' (remote)' if is_remote else ''}"
+        try:
+            df = scrape_jobs(
+                site_name=SITES,
+                search_term=role,
+                location=location,
+                is_remote=is_remote,
+                results_wanted=RESULTS_WANTED,
+                hours_old=HOURS_OLD,
+                country_indeed="India",
+            )
+        except Exception as e:
+            # One blocked/broken search must not take down the whole run —
+            # log it and move on; every combo is independent.
+            print(f"[{i}] FAILED {label}: {e}", file=sys.stderr)
+            continue
+
+        rows = rows_from_results(df, role)
+        total_found += len(rows)
+        for row in rows:
+            rows_by_fp[row["fingerprint"]] = row  # last write wins within this run
+        print(f"[{i}] {label}: {len(rows)} usable rows")
+        time.sleep(CALL_DELAY_SECONDS)
+
+    rows = list(rows_by_fp.values())
+    if dry_run:
+        print(f"DRY RUN: would upsert {len(rows)} unique rows (from {total_found} raw results)")
+        return
+
+    for i in range(0, len(rows), 500):
+        supa.table("jobs").upsert(rows[i:i + 500], on_conflict="fingerprint").execute()
+
+    cutoff = (datetime.now(timezone.utc) - timedelta(days=PRUNE_AFTER_DAYS)).isoformat()
+    supa.table("jobs").delete().lt("synced_at", cutoff).execute()
+
+    print(f"Upserted {len(rows)} unique jobs (from {total_found} raw results across {i // 500 + 1 if rows else 0} batches).")
+
+if __name__ == "__main__":
+    parser = argparse.ArgumentParser()
+    parser.add_argument("--dry-run", action="store_true", help="scrape and print counts, skip all Supabase writes")
+    args = parser.parse_args()
+    run(args.dry_run)

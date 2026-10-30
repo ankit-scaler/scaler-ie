@@ -5,3 +5,4 @@ google-auth==2.32.0
 # is required, not just a nice-to-have upgrade.
 supabase==2.31.0
 google-genai==1.47.0
+python-jobspy==1.4.1
