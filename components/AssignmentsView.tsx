@@ -1,6 +1,7 @@
 "use client";
 import { useMemo, useEffect } from "react";
-import Filters, { FilterState } from "./Filters";
+import Filters, { FilterState, EMPTY_FILTERS, filtersActive } from "./Filters";
+import { EmptyState } from "./FilterBar";
 import AssignmentCard from "./AssignmentCard";
 import { useUrlFilterState } from "@/lib/useUrlFilterState";
 
@@ -56,9 +57,7 @@ export default function AssignmentsView({ initial }: { initial: A[] }) {
           {filtered.length.toLocaleString()} assignment{filtered.length === 1 ? "" : "s"}
         </div>
         {filtered.length === 0 ? (
-          <div className="rounded-2xl border border-edge bg-panel p-10 text-center text-mute">
-            Nothing matches these filters yet.
-          </div>
+          <EmptyState onClear={filtersActive(state) ? () => setState(EMPTY_FILTERS) : undefined} />
         ) : (
           <div className="grid grid-cols-1 gap-4 md:grid-cols-2 xl:grid-cols-3">
             {filtered.map((a, i) => <AssignmentCard key={a.id} a={a} index={i} />)}
