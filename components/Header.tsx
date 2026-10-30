@@ -80,7 +80,7 @@ export default function Header() {
     { href: "/",                label: "Questions",   match: p => p === "/" },
     { href: "/company-packets", label: "Packets",     match: p => p.startsWith("/company-packets") || p.startsWith("/packets") },
     { href: "/assignments",     label: "Assignments", match: p => p.startsWith("/assignments") },
-    { href: "/jobs",            label: "Jobs",        match: p => p.startsWith("/jobs") },
+    { href: "/jobs",            label: "Open Hirings", match: p => p.startsWith("/jobs") },
   ];
   const CRASH_COURSE = "https://cortex-by-scaler.up.railway.app/login";
 
