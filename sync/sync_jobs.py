@@ -31,6 +31,23 @@ PRUNE_AFTER_DAYS = 70
 # Sites may still block some calls regardless (see the per-call try/except
 # in run()) — that's expected and handled, not prevented, by this delay.
 CALL_DELAY_SECONDS = 3
+# Job boards match search terms loosely (e.g. Naukri returning "Branch Head
+# - SME Loans" or "HR Assistant" for a "Program Manager"/"Engineering
+# Manager" search, matching on the generic word "Manager" rather than the
+# actual role) — this allowlist is the gate that keeps those out. A title
+# must contain at least one of these to be stored.
+RELEVANT_KEYWORDS = [
+    "engineer", "developer", "sde", "swe", "software",
+    "data scientist", "data analyst", "data engineer",
+    "machine learning",
+    "forward deployed",
+    "program manager", "programme manager", "technical program",
+    "product manager",
+]
+
+def is_relevant_title(title: str) -> bool:
+    t = title.lower()
+    return any(k in t for k in RELEVANT_KEYWORDS)
 
 def norm(s):
     # A missing cell from df.to_dict("records") isn't always None — for
@@ -64,6 +81,8 @@ def rows_from_results(df: "pd.DataFrame | None", role: str) -> list[dict]:
         # on — skip rather than write a dead "Apply" link.
         if not job_url or not title or not company:
             continue
+        if not is_relevant_title(title):
+            continue
         date_posted = r.get("date_posted")
         date_posted_iso = date_posted.isoformat() if pd.notna(date_posted) else None
         is_remote = bool(r.get("is_remote")) if pd.notna(r.get("is_remote")) else False
@@ -92,6 +111,25 @@ def rows_from_results(df: "pd.DataFrame | None", role: str) -> list[dict]:
             "synced_at": datetime.now(timezone.utc).isoformat(),
         })
     return out
+
+def prune_irrelevant(supa) -> int:
+    """Sweeps out rows stored before the RELEVANT_KEYWORDS gate existed (or
+    from before a keyword-list change) — a one-time-per-change cleanup, not
+    the staleness prune below. Paged select + chunked delete, same shape as
+    sync_sheet.py's select_all/delete_stale."""
+    PAGE = 1000
+    bad_ids = []
+    frm = 0
+    while True:
+        res = supa.table("jobs").select("id,title").range(frm, frm + PAGE - 1).execute()
+        rows = res.data or []
+        bad_ids.extend(r["id"] for r in rows if not is_relevant_title(r["title"]))
+        if len(rows) < PAGE:
+            break
+        frm += PAGE
+    for i in range(0, len(bad_ids), 200):
+        supa.table("jobs").delete().in_("id", bad_ids[i:i + 200]).execute()
+    return len(bad_ids)
 
 def run(dry_run: bool):
     supa = None if dry_run else create_client(os.environ["SUPABASE_URL"], os.environ["SUPABASE_SERVICE_KEY"])
@@ -151,7 +189,10 @@ def run(dry_run: bool):
     cutoff = (datetime.now(timezone.utc) - timedelta(days=PRUNE_AFTER_DAYS)).isoformat()
     supa.table("jobs").delete().lt("synced_at", cutoff).execute()
 
-    print(f"Upserted {len(rows)} unique jobs (from {total_found} raw results across {i // 500 + 1 if rows else 0} batches).")
+    irrelevant_removed = prune_irrelevant(supa)
+
+    print(f"Upserted {len(rows)} unique jobs (from {total_found} raw results across {i // 500 + 1 if rows else 0} batches). "
+          f"Removed {irrelevant_removed} pre-existing off-topic rows.")
 
 if __name__ == "__main__":
     parser = argparse.ArgumentParser()
