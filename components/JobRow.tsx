@@ -36,6 +36,8 @@ export default function JobRow({
   index: number;
 }) {
   const color = CATEGORY_COLORS[category]; // undefined (e.g. "Other") falls back to a neutral rail
+  const trackApply = () =>
+    fetch("/api/track-job-apply", { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify({ job_id: job.id }) }).catch(() => {});
 
   return (
     <motion.article
@@ -68,6 +70,7 @@ export default function JobRow({
       <a
         href={job.job_url}
         target="_blank" rel="noopener noreferrer"
+        onClick={trackApply}
         className="inline-flex shrink-0 items-center gap-2 rounded-xl bg-text px-3.5 py-2 text-sm font-medium text-ink transition hover:opacity-90"
       >
         Apply

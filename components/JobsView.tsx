@@ -90,6 +90,19 @@ export default function JobsView({ initial }: { initial: Job[] }) {
   const [state, setState] = useState<State>(DEFAULT_STATE);
   const [visible, setVisible] = useState(PAGE);
 
+  // One page-visit event per mount — the Tracking page dedupes this to
+  // "unique learners per day" at read time, same pattern as Questions'/
+  // Assignments' search-narrow tracking, just unconditional instead of
+  // gated on a filter being set (there's no equivalent "action" to gate
+  // Jobs' visit count on).
+  useEffect(() => {
+    fetch("/api/track", {
+      method: "POST",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify({ path: "/jobs" }),
+    }).catch(() => {});
+  }, []);
+
   const jobTypes = useMemo(
     () => Array.from(new Set(initial.map(j => j.job_type).filter((t): t is string => !!t))).sort(),
     [initial]
