@@ -76,7 +76,7 @@ export default function Header() {
             transition={{ type: "spring", stiffness: 500, damping: 42 }}
           />
         ) : (
-          <span className="absolute inset-0 rounded-full bg-panel2 opacity-0 transition-opacity duration-200 group-hover:opacity-70" />
+          <span className="absolute inset-0 rounded-full bg-panel2 opacity-0 ring-1 ring-inset ring-edge-strong transition-opacity duration-200 group-hover:opacity-100" />
         ))}
         <span className="relative z-10">{label}</span>
       </Link>

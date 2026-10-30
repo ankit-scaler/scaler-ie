@@ -8,6 +8,7 @@ export default {
         panel:  "rgb(var(--panel) / <alpha-value>)",
         panel2: "rgb(var(--panel2) / <alpha-value>)",
         edge:   "rgb(var(--edge) / <alpha-value>)",
+        "edge-strong": "rgb(var(--edge-strong) / <alpha-value>)",
         text:   "rgb(var(--text) / <alpha-value>)",
         mute:   "rgb(var(--mute) / <alpha-value>)",
         acad:   "rgb(var(--acad) / <alpha-value>)",
