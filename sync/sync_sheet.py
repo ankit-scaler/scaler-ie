@@ -581,6 +581,16 @@ def main():
     q_rows = dedupe_by_fp(q_rows)
     print(f"total unique questions: {len(q_rows)}")
 
+    # asked_on needs supabase/add_question_asked_on.sql. If that migration
+    # hasn't run yet, leave the field out rather than failing the whole
+    # upsert (and with it, the night's sync).
+    try:
+        supa.table("questions").select("asked_on").limit(1).execute()
+    except Exception:
+        print("questions.asked_on missing (run add_question_asked_on.sql); syncing without dates", file=sys.stderr)
+        for r in q_rows:
+            r.pop("asked_on", None)
+
     for i in range(0, len(q_rows), 500):
         supa.table("questions").upsert(q_rows[i:i+500], on_conflict="fingerprint").execute()
     if FULL_RESYNC:
