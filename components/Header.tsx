@@ -111,7 +111,6 @@ export default function Header() {
           {!isPacketOpen && <ThemeToggle />}
           {email ? (
             <>
-              {!isAdmin && <span className="hidden text-sm text-mute sm:inline">{email}</span>}
               <motion.button
                 onClick={async () => {
                   setSigningOut(true);
@@ -119,43 +118,56 @@ export default function Header() {
                   router.push("/login");
                 }}
                 disabled={signingOut}
+                title={signingOut ? "Signing out…" : "Sign out"}
+                aria-label="Sign out"
                 whileTap={{ scale: 0.96 }}
                 transition={{ duration: 0.1 }}
-                className="rounded-full border border-edge px-3 py-1.5 text-sm text-mute transition-colors duration-200 hover:border-text/40 hover:bg-panel2 hover:text-text disabled:opacity-50"
-              >{signingOut ? "Signing out…" : "Sign out"}</motion.button>
-              {isAdmin && (
-                <div className="relative" ref={accountMenuRef}>
-                  <button
-                    onClick={() => setAccountMenuOpen(v => !v)}
-                    className="hidden items-center gap-1.5 rounded-full border border-transparent px-2 py-1 text-sm text-mute transition-colors duration-200 hover:border-edge hover:text-text sm:flex"
-                  >
-                    {email}
-                    <svg
-                      className={`h-3.5 w-3.5 transition-transform duration-200 ${accountMenuOpen ? "rotate-180" : ""}`}
-                      viewBox="0 0 20 20" fill="currentColor"
-                    ><path d="M5.5 7.5l4.5 4.5 4.5-4.5" stroke="currentColor" strokeWidth="1.5" fill="none" strokeLinecap="round" strokeLinejoin="round"/></svg>
-                  </button>
-                  {accountMenuOpen && (
-                    <div className="absolute right-0 top-full z-50 mt-2 w-52 overflow-hidden rounded-xl border border-edge bg-panel shadow-card divide-y divide-edge/60">
-                      <Link
-                        href="/admin/tracking"
-                        onClick={() => setAccountMenuOpen(false)}
-                        className="block px-4 py-2.5 text-sm text-text transition-colors hover:bg-panel2"
-                      >Tracking</Link>
-                      <Link
-                        href="/admin/access"
-                        onClick={() => setAccountMenuOpen(false)}
-                        className="block px-4 py-2.5 text-sm text-text transition-colors hover:bg-panel2"
-                      >Access management</Link>
-                      <Link
-                        href="/admin/content"
-                        onClick={() => setAccountMenuOpen(false)}
-                        className="block px-4 py-2.5 text-sm text-text transition-colors hover:bg-panel2"
-                      >Content management</Link>
-                    </div>
-                  )}
-                </div>
-              )}
+                className="flex h-9 w-9 items-center justify-center rounded-full border border-edge text-mute transition-colors duration-200 hover:border-text/40 hover:bg-panel2 hover:text-text disabled:opacity-50"
+              >
+                <svg className="h-4 w-4" viewBox="0 0 20 20" fill="none">
+                  <path d="M8 3H5a1 1 0 0 0-1 1v12a1 1 0 0 0 1 1h3" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round"/>
+                  <path d="M13 13.5l3.5-3.5L13 6.5M7 10h9.5" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round"/>
+                </svg>
+              </motion.button>
+              <div className="relative" ref={accountMenuRef}>
+                <button
+                  onClick={() => setAccountMenuOpen(v => !v)}
+                  title={email}
+                  aria-label="Account"
+                  className="flex h-9 w-9 items-center justify-center rounded-full border border-edge text-mute transition-colors duration-200 hover:border-text/40 hover:bg-panel2 hover:text-text"
+                >
+                  <svg className="h-4 w-4" viewBox="0 0 20 20" fill="none">
+                    <circle cx="10" cy="7" r="3" stroke="currentColor" strokeWidth="1.5"/>
+                    <path d="M4 17c0-3 2.7-5 6-5s6 2 6 5" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round"/>
+                    <path d="M5.8 5.3a2.3 2.3 0 1 0 .3 4.5M14.2 5.3a2.3 2.3 0 1 1-.3 4.5" stroke="currentColor" strokeWidth="1.3" strokeLinecap="round"/>
+                    <path d="M1.8 16c.3-2 2-3.3 4-3.5M18.2 16c-.3-2-2-3.3-4-3.5" stroke="currentColor" strokeWidth="1.3" strokeLinecap="round"/>
+                  </svg>
+                </button>
+                {accountMenuOpen && (
+                  <div className="absolute right-0 top-full z-50 mt-2 w-60 overflow-hidden rounded-xl border border-edge bg-panel shadow-card">
+                    <div className="truncate px-4 py-2.5 font-mono text-xs text-mute">{email}</div>
+                    {isAdmin && (
+                      <div className="divide-y divide-edge/60 border-t border-edge/60">
+                        <Link
+                          href="/admin/tracking"
+                          onClick={() => setAccountMenuOpen(false)}
+                          className="block px-4 py-2.5 text-sm text-text transition-colors hover:bg-panel2"
+                        >Tracking</Link>
+                        <Link
+                          href="/admin/access"
+                          onClick={() => setAccountMenuOpen(false)}
+                          className="block px-4 py-2.5 text-sm text-text transition-colors hover:bg-panel2"
+                        >Access management</Link>
+                        <Link
+                          href="/admin/content"
+                          onClick={() => setAccountMenuOpen(false)}
+                          className="block px-4 py-2.5 text-sm text-text transition-colors hover:bg-panel2"
+                        >Content management</Link>
+                      </div>
+                    )}
+                  </div>
+                )}
+              </div>
             </>
           ) : (
             <motion.button
