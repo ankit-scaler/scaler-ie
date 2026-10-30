@@ -65,7 +65,9 @@ export default function Header() {
         {...(external ? { target: "_blank", rel: "noopener noreferrer" } : {})}
         className={`group relative whitespace-nowrap rounded-full px-4 py-1.5 text-sm transition-colors duration-200 ${
           highlight
-            ? "border border-acad/40 bg-ink text-acad hover:bg-acad/10"
+            ? active
+              ? "border border-acad bg-acad/15 font-semibold text-acad"
+              : "border border-acad/40 bg-ink text-acad hover:border-acad/70 hover:bg-acad/15 hover:font-semibold"
             : active ? "text-text" : "text-mute hover:text-text"
         }`}
       >
