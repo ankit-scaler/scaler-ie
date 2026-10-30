@@ -97,7 +97,7 @@ export default function Header() {
           </span>
         </Link>
         {email && (
-          <nav className="flex min-w-0 flex-1 items-center justify-center gap-2 overflow-x-auto sm:overflow-visible">
+          <nav className="flex min-w-0 flex-1 items-center justify-start gap-2 overflow-x-auto [-ms-overflow-style:none] [scrollbar-width:none] [&::-webkit-scrollbar]:hidden">
             {tab("/", "Questions")}
             {tab("/assignments", "Assignments")}
             {tab("/packets", "Prepare for Trending roles")}
