@@ -25,7 +25,7 @@ ROLES = [
 CITIES = ["Bangalore, India", "Hyderabad, India", "Pune, India", "Gurgaon, India", "Mumbai, India", "Chennai, India"]
 RESULTS_WANTED = 15
 HOURS_OLD = 48
-PRUNE_AFTER_DAYS = 30
+PRUNE_AFTER_DAYS = 7
 # Pause between scrape_jobs() calls so ~56 back-to-back requests don't trip
 # a site's rate limiter any faster than normal, spaced-out traffic would.
 # Sites may still block some calls regardless (see the per-call try/except
