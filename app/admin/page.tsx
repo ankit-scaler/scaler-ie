@@ -1,15 +1,9 @@
 import { redirect } from "next/navigation";
-import { supabaseServer, supabaseAdmin } from "@/lib/supabase-server";
-import AdminDashboard from "@/components/AdminDashboard";
 
-export const dynamic = "force-dynamic";
-
-export default async function AdminPage() {
-  const sb = supabaseServer();
-  const { data: { user } } = await sb.auth.getUser();
-  if (!user) redirect("/login");
-  const admin = supabaseAdmin();
-  const { data } = await admin.from("admins").select("email").eq("email", user.email!).maybeSingle();
-  if (!data) redirect("/");
-  return <AdminDashboard me={user.email!} />;
+// /admin used to be one monolithic dashboard; it's now split into
+// /admin/tracking, /admin/access, /admin/content. This keeps old
+// links/bookmarks to plain /admin working by landing on the default section
+// — auth/admin gating happens on that page itself.
+export default function AdminPage() {
+  redirect("/admin/tracking");
 }

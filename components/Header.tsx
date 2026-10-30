@@ -107,7 +107,19 @@ export default function Header() {
           {!isPacketOpen && <ThemeToggle />}
           {email ? (
             <>
-              {isAdmin ? (
+              {!isAdmin && <span className="hidden text-sm text-mute sm:inline">{email}</span>}
+              <motion.button
+                onClick={async () => {
+                  setSigningOut(true);
+                  await sb.auth.signOut();
+                  router.push("/login");
+                }}
+                disabled={signingOut}
+                whileTap={{ scale: 0.96 }}
+                transition={{ duration: 0.1 }}
+                className="rounded-full border border-edge px-3 py-1.5 text-sm text-mute transition-colors duration-200 hover:border-text/40 hover:bg-panel2 hover:text-text disabled:opacity-50"
+              >{signingOut ? "Signing out…" : "Sign out"}</motion.button>
+              {isAdmin && (
                 <div className="relative" ref={accountMenuRef}>
                   <button
                     onClick={() => setAccountMenuOpen(v => !v)}
@@ -120,29 +132,26 @@ export default function Header() {
                     ><path d="M5.5 7.5l4.5 4.5 4.5-4.5" stroke="currentColor" strokeWidth="1.5" fill="none" strokeLinecap="round" strokeLinejoin="round"/></svg>
                   </button>
                   {accountMenuOpen && (
-                    <div className="absolute right-0 top-full z-50 mt-2 w-40 overflow-hidden rounded-xl border border-edge bg-panel shadow-card">
+                    <div className="absolute right-0 top-full z-50 mt-2 w-52 overflow-hidden rounded-xl border border-edge bg-panel shadow-card divide-y divide-edge/60">
                       <Link
-                        href="/admin"
+                        href="/admin/tracking"
                         onClick={() => setAccountMenuOpen(false)}
                         className="block px-4 py-2.5 text-sm text-text transition-colors hover:bg-panel2"
-                      >Admin</Link>
+                      >Tracking</Link>
+                      <Link
+                        href="/admin/access"
+                        onClick={() => setAccountMenuOpen(false)}
+                        className="block px-4 py-2.5 text-sm text-text transition-colors hover:bg-panel2"
+                      >Access management</Link>
+                      <Link
+                        href="/admin/content"
+                        onClick={() => setAccountMenuOpen(false)}
+                        className="block px-4 py-2.5 text-sm text-text transition-colors hover:bg-panel2"
+                      >Content management</Link>
                     </div>
                   )}
                 </div>
-              ) : (
-                <span className="hidden text-sm text-mute sm:inline">{email}</span>
               )}
-              <motion.button
-                onClick={async () => {
-                  setSigningOut(true);
-                  await sb.auth.signOut();
-                  router.push("/login");
-                }}
-                disabled={signingOut}
-                whileTap={{ scale: 0.96 }}
-                transition={{ duration: 0.1 }}
-                className="rounded-full border border-edge px-3 py-1.5 text-sm text-mute transition-colors duration-200 hover:border-text/40 hover:bg-panel2 hover:text-text disabled:opacity-50"
-              >{signingOut ? "Signing out…" : "Sign out"}</motion.button>
             </>
           ) : (
             <motion.button
