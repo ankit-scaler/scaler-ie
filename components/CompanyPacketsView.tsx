@@ -1,6 +1,7 @@
 "use client";
 import { useMemo, useState } from "react";
 import { motion } from "framer-motion";
+import PacketsSwitch from "@/components/PacketsSwitch";
 import { PacketListItem, TRACK_LABELS, YOE_LABELS, Track, YoeBucket } from "@/lib/packets-db";
 
 const PAGE = 30;
@@ -62,6 +63,7 @@ export default function CompanyPacketsView({ initial }: { initial: PacketListIte
   return (
     <div className="space-y-8">
       <section>
+        <div className="mb-5"><PacketsSwitch current="company" /></div>
         <span className="font-mono text-[11px] uppercase tracking-widest text-mute">Packets</span>
         <h1 className="mt-1 font-display text-4xl leading-tight sm:text-5xl">
           Company packets,<br /><span className="text-mute">one link away.</span>
