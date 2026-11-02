@@ -63,6 +63,14 @@ export default function LoginPage() {
           <div className="mb-6 max-w-sm rounded-xl border border-devops/40 bg-devops/10 px-4 py-3 text-sm text-devops">
             This Google account isn&apos;t on the Scaler learner list, so it can&apos;t sign in here.
             If this looks wrong, reach out to <span className="font-medium">ankit.mishra@scaler.com</span>.
+            {" "}To raise issues or queries, check here on how to raise Tickets:{" "}
+            <a
+              href="https://www.loom.com/share/9b779dbbd07f4d068076fa0ca1d99b19"
+              target="_blank" rel="noopener noreferrer"
+              className="font-medium underline underline-offset-2 hover:opacity-80"
+            >
+              Loom walkthrough
+            </a>.
           </div>
         )}
         <motion.button

@@ -6,6 +6,17 @@ export default function Footer() {
         <a href="mailto:ankit.mishra@scaler.com" className="font-semibold text-acad underline underline-offset-2 hover:opacity-80">
           ankit.mishra@scaler.com
         </a>
+        <br className="sm:hidden" />{" "}
+        <span className="text-mute">
+          To raise issues or queries, check here on how to raise Tickets:{" "}
+          <a
+            href="https://www.loom.com/share/9b779dbbd07f4d068076fa0ca1d99b19"
+            target="_blank" rel="noopener noreferrer"
+            className="font-semibold text-acad underline underline-offset-2 hover:opacity-80"
+          >
+            Loom walkthrough
+          </a>
+        </span>
       </div>
     </footer>
   );
