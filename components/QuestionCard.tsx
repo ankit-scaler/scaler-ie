@@ -2,11 +2,11 @@
 import { motion } from "framer-motion";
 
 const BAR: Record<string, string> = {
-  Academy: "bg-acad", DSML: "bg-dsml", AIML: "bg-aiml", DevOps: "bg-devops",
+  Academy: "bg-acad", DSML: "bg-dsml", AIML: "bg-aiml", DevOps: "bg-devops", FDE: "bg-topic",
 };
 const DOT = BAR;
 const TOPIC_TEXT: Record<string, string> = {
-  Academy: "text-acad", DSML: "text-dsml", AIML: "text-aiml", DevOps: "text-devops",
+  Academy: "text-acad", DSML: "text-dsml", AIML: "text-aiml", DevOps: "text-devops", FDE: "text-topic",
 };
 
 // "2026-10-14" → "Oct 2026". Parsed as a plain date so no timezone can
