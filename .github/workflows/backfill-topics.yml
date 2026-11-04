@@ -1,10 +1,22 @@
 name: Backfill AI Topics
 on:
-  workflow_dispatch: {}
+  workflow_dispatch:
+    inputs:
+      only_topic:
+        description: 'Only re-check questions currently tagged this topic (e.g. Behavioral). Leave empty for every question.'
+        required: false
+        default: ''
+      dry_run:
+        description: 'Dry run: print what would change, write nothing'
+        type: boolean
+        default: true
   # No schedule — this is the large one-off pass that reclassifies every
   # question's AI topic from scratch (fixes bad classifications, not just
   # unclassified rows). The nightly Daily Sheet Sync handles new rows
   # incrementally on its own; no need to run this after every sync.
+  #
+  # Dry run is on by default, so a click shows the list of changes first;
+  # untick it to actually write them.
 
 jobs:
   backfill:
@@ -14,8 +26,17 @@ jobs:
       - uses: actions/setup-python@v5
         with: { python-version: '3.11' }
       - run: pip install -r sync/requirements.txt
-      - run: python sync/backfill_topics.py
+      # Inputs reach the script through env vars and an argument array (no
+      # eval), so a topic name can't be read as shell syntax.
+      - run: |
+          ARGS=()
+          if [ -n "$ONLY_TOPIC" ]; then ARGS+=(--only-topic "$ONLY_TOPIC"); fi
+          if [ "$DRY_RUN" = "true" ]; then ARGS+=(--dry-run); fi
+          python sync/backfill_topics.py "${ARGS[@]}"
+        shell: bash
         env:
           SUPABASE_URL:         ${{ secrets.SUPABASE_URL }}
           SUPABASE_SERVICE_KEY: ${{ secrets.SUPABASE_SERVICE_KEY }}
           GEMINI_API_KEY:       ${{ secrets.GEMINI_API_KEY }}
+          ONLY_TOPIC:           ${{ inputs.only_topic }}
+          DRY_RUN:              ${{ inputs.dry_run }}
