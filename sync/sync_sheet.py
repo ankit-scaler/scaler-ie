@@ -5,7 +5,8 @@ Also writes tracking-insights snapshots (the same breakdowns Admin can
 export as CSV) out to subsheets of a separate tracking spreadsheet.
 """
 import os, json, hashlib, sys, re, time
-from datetime import datetime, timedelta
+from datetime import datetime, timedelta, timezone
+import requests
 import gspread
 from google.oauth2.service_account import Credentials
 from supabase import create_client
@@ -32,6 +33,25 @@ GEMINI_API_KEY = os.environ.get("GEMINI_API_KEY")
 # Admin stats API (app/api/admin/stats/route.ts) applies the same exclusion,
 # so this spreadsheet and the Tracking tab never disagree.
 INTERNAL_EMAIL_PATTERN = "%@scaler.com"
+# Second Slack webhook, deliberately separate from
+# app/api/request-packet/route.ts's SLACK_PACKET_REQUESTS_WEBHOOK_URL, so
+# this daily digest posts under its own bot identity even though it can
+# land in the same channel. Optional — skips cleanly if unset, same
+# reasoning as TRACKING_SHEET_ID above.
+SLACK_DAILY_DIGEST_WEBHOOK_URL = os.environ.get("SLACK_DAILY_DIGEST_WEBHOOK_URL")
+# IST has a fixed +05:30 offset (no DST) — same reasoning and same approach
+# as the IST helpers in app/api/admin/stats/route.ts: every "day" boundary
+# in this product is anchored to IST, not UTC, so this script's notion of
+# "today" never disagrees with what admins see on the Tracking dashboard.
+IST = timezone(timedelta(hours=5, minutes=30))
+
+def ist_today_window_utc():
+    """Returns (since_iso, until_iso): the [start, end) of 'today' in IST,
+    expressed as UTC ISO timestamps for Supabase's timestamptz columns."""
+    now_ist = datetime.now(IST)
+    start_ist = now_ist.replace(hour=0, minute=0, second=0, microsecond=0)
+    end_ist = start_ist + timedelta(days=1)
+    return start_ist.astimezone(timezone.utc).isoformat(), end_ist.astimezone(timezone.utc).isoformat()
 # Caps how many rows one nightly run will classify directly (one call each).
 # Normal nights only have a handful of new questions; this just bounds the
 # worst case (someone bulk-pastes thousands of rows into the sheet in one
@@ -114,6 +134,7 @@ QUESTION_TABS = {
     "Questions | DevOps":  {"round_col": "# Round - Name"},
     "Questions | AIML":    {"round_col": "Round"},
     "Questions | DSML":    {"round_col": "# Round - Name"},
+    "Questions | FDE":     {"round_col": "Round"},
 }
 ASSIGNMENT_TAB = "Assignments"
 LEARNERS_TAB = "Main"
@@ -405,6 +426,59 @@ def build_feedback_rows(feedback):
             f.get("feedback_text") or "", _fmt_ts(f["created_at"]),
         ])
     return rows
+
+def select_window(supa, table, select_cols, since_iso, until_iso, date_col):
+    """Same paging/internal-email-exclusion as select_paged, but bounded on
+    both ends — select_paged only takes a lower bound, which is enough for
+    'last 30 days' but not for 'just today'."""
+    PAGE = 1000
+    out, frm = [], 0
+    while True:
+        q = (supa.table(table).select(select_cols).order("id")
+             .not_.ilike("user_email", INTERNAL_EMAIL_PATTERN)
+             .gte(date_col, since_iso).lt(date_col, until_iso))
+        res = q.range(frm, frm + PAGE - 1).execute()
+        rows = res.data or []
+        out.extend(rows)
+        if len(rows) < PAGE:
+            break
+        frm += PAGE
+    return out
+
+def send_daily_slack_digest(supa):
+    """Posts one end-of-day message: today's (IST) unique-visitor count plus
+    any feedback submitted today. Optional — skips cleanly if the webhook
+    env var isn't set, same reasoning as TRACKING_SHEET_ID."""
+    if not SLACK_DAILY_DIGEST_WEBHOOK_URL:
+        print("SLACK_DAILY_DIGEST_WEBHOOK_URL not set, skipping daily digest", file=sys.stderr)
+        return
+    since, until = ist_today_window_utc()
+    today_label = datetime.now(IST).strftime("%Y-%m-%d")
+
+    sessions = select_window(supa, "sessions", "user_email", since, until, "started_at")
+    unique_visitors = len({s["user_email"] for s in sessions})
+
+    feedback = select_window(
+        supa, "feedback",
+        "user_email,platform_rating,usefulness_rating,feedback_text,created_at",
+        since, until, "created_at",
+    )
+
+    lines = [f"*Daily Update — {today_label} (IST)*", f"*Unique visitors:* {unique_visitors}"]
+    if feedback:
+        lines.append(f"*Feedback received today ({len(feedback)}):*")
+        for f in sorted(feedback, key=lambda r: r["created_at"]):
+            text = f.get("feedback_text") or "—"
+            lines.append(f"• {f['user_email']} — platform {f['platform_rating']}/5, usefulness {f['usefulness_rating']}/5: {text}")
+    else:
+        lines.append("_No feedback submitted today._")
+
+    try:
+        res = requests.post(SLACK_DAILY_DIGEST_WEBHOOK_URL, json={"text": "\n".join(lines)}, timeout=10)
+        if not res.ok:
+            print(f"daily digest: Slack post failed [{res.status_code}]: {res.text}", file=sys.stderr)
+    except Exception as e:
+        print(f"daily digest: Slack post error: {e}", file=sys.stderr)
 
 def select_packet_requests(supa):
     """Packet requests that got escalated to Slack (no existing packet was
@@ -715,6 +789,12 @@ def main():
         sync_tracking_to_sheet(gc, supa)
     except Exception as e:
         print(f"tracking sheet error: {e}", file=sys.stderr)
+
+    # --- Daily Slack digest (unique visitors + today's feedback) ---
+    try:
+        send_daily_slack_digest(supa)
+    except Exception as e:
+        print(f"daily digest error: {e}", file=sys.stderr)
 
     print("done at", datetime.utcnow().isoformat())
 
