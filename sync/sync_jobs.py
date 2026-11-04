@@ -131,7 +131,7 @@ def prune_irrelevant(supa) -> int:
         supa.table("jobs").delete().in_("id", bad_ids[i:i + 200]).execute()
     return len(bad_ids)
 
-def run(dry_run: bool):
+def run(dry_run: bool, sweep_irrelevant: bool = False):
     supa = None if dry_run else create_client(os.environ["SUPABASE_URL"], os.environ["SUPABASE_SERVICE_KEY"])
     total_found = 0
     rows_by_fp: dict[str, dict] = {}
@@ -189,7 +189,19 @@ def run(dry_run: bool):
     cutoff = (datetime.now(timezone.utc) - timedelta(days=PRUNE_AFTER_DAYS)).isoformat()
     supa.table("jobs").delete().lt("synced_at", cutoff).execute()
 
-    irrelevant_removed = prune_irrelevant(supa)
+    # New rows are already filtered by is_relevant_title() before they're
+    # stored, so re-reading the whole table every night only matters after
+    # RELEVANT_KEYWORDS changes. Run with --sweep-irrelevant when it does.
+    irrelevant_removed = prune_irrelevant(supa) if sweep_irrelevant else 0
+
+    # Tell the website its cached Jobs list is out of date (see
+    # lib/cached-table.ts). Never fails the sync if the table isn't there.
+    try:
+        supa.table("cache_versions").upsert(
+            {"name": "jobs", "updated_at": datetime.now(timezone.utc).isoformat()}, on_conflict="name"
+        ).execute()
+    except Exception as e:
+        print(f"cache_versions bump skipped: {e}", file=sys.stderr)
 
     print(f"Upserted {len(rows)} unique jobs (from {total_found} raw results across {i // 500 + 1 if rows else 0} batches). "
           f"Removed {irrelevant_removed} pre-existing off-topic rows.")
@@ -197,5 +209,6 @@ def run(dry_run: bool):
 if __name__ == "__main__":
     parser = argparse.ArgumentParser()
     parser.add_argument("--dry-run", action="store_true", help="scrape and print counts, skip all Supabase writes")
+    parser.add_argument("--sweep-irrelevant", action="store_true", help="also re-check every stored job against RELEVANT_KEYWORDS (only needed after that list changes)")
     args = parser.parse_args()
-    run(args.dry_run)
+    run(args.dry_run, args.sweep_irrelevant)

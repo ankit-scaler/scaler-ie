@@ -1,4 +1,5 @@
 "use client";
+import Link from "next/link";
 import { motion } from "framer-motion";
 
 const JOB_TYPE_LABELS: Record<string, string> = {
@@ -29,11 +30,12 @@ function timeAgo(dateIso: string | null): string {
 }
 
 export default function JobRow({
-  job, category, index,
+  job, category, index, prepHref,
 }: {
   job: { id: number; title: string; company: string; location: string | null; is_remote: boolean; job_type: string | null; date_posted: string | null; job_url: string };
   category: string;
   index: number;
+  prepHref?: string;
 }) {
   const color = CATEGORY_COLORS[category]; // undefined (e.g. "Other") falls back to a neutral rail
   const trackApply = () =>
@@ -67,6 +69,13 @@ export default function JobRow({
           {job.date_posted && <span className="text-xs">Posted {timeAgo(job.date_posted)}</span>}
         </div>
       </div>
+      <div className="flex shrink-0 items-center gap-2">
+      {prepHref && (
+        <Link
+          href={prepHref}
+          className="inline-flex items-center gap-2 rounded-xl border border-edge bg-panel2 px-3.5 py-2 text-sm text-text transition hover:border-text/40"
+        >Prepare</Link>
+      )}
       <a
         href={job.job_url}
         target="_blank" rel="noopener noreferrer"
@@ -76,6 +85,7 @@ export default function JobRow({
         Apply
         <svg className="h-3.5 w-3.5" viewBox="0 0 20 20" fill="currentColor"><path d="M7 3h10v10h-2V6.4L4.7 16.7 3.3 15.3 13.6 5H7V3z"/></svg>
       </a>
+      </div>
     </motion.article>
   );
 }
