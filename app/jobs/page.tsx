@@ -3,6 +3,7 @@ import { unstable_cache } from "next/cache";
 import { supabaseServer } from "@/lib/supabase-server";
 import { fetchAllRows } from "@/lib/paged-fetch";
 import JobsView, { Job } from "@/components/JobsView";
+import { getPacketLinks, getPrepCounts } from "@/lib/prep-data";
 
 export const dynamic = "force-dynamic";
 
@@ -23,6 +24,6 @@ export default async function Jobs() {
   const { data: { user } } = await sb.auth.getUser();
   if (!user) redirect("/login");
 
-  const all = await getAllJobs();
-  return <JobsView initial={all} />;
+  const [all, prep, packets] = await Promise.all([getAllJobs(), getPrepCounts(), getPacketLinks()]);
+  return <JobsView initial={all} prep={prep} packets={packets} />;
 }

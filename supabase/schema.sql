@@ -311,3 +311,22 @@ create policy "own sessions rw" on sessions   for all
 
 -- Admin table: only admins can read/write (checked via service role in API)
 create policy "admins read self" on admins for select using (auth.jwt() ->> 'email' = email);
+
+-- Per-company prep summary used for cross-page links (see
+-- supabase/add_company_prep_counts.sql for the reasoning).
+create or replace view company_prep_counts with (security_invoker = true) as
+select lower(btrim(company))                        as company_key,
+       mode() within group (order by btrim(company)) as company,
+       count(*) filter (where src = 'q')            as questions,
+       count(*) filter (where src = 'a')            as assignments,
+       count(*) filter (where src = 'j')            as jobs
+from (
+  select company, 'q' as src from questions
+  union all
+  select company, 'a' from assignments
+  union all
+  select company, 'j' from jobs where date_posted >= current_date - 7
+) t
+where btrim(coalesce(company, '')) <> ''
+group by 1;
+grant select on company_prep_counts to authenticated;
