@@ -1,7 +1,10 @@
 "use client";
 import { useMemo, useState, useEffect } from "react";
-import Filters, { FilterState } from "./Filters";
+import Filters, { FilterState, EMPTY_FILTERS, filtersActive } from "./Filters";
+import { EmptyState } from "./FilterBar";
 import QuestionCard from "./QuestionCard";
+import PacketBanner from "./PacketBanner";
+import type { PacketLink } from "@/lib/prep-shared";
 import { useUrlFilterState } from "@/lib/useUrlFilterState";
 
 export type Q = {
@@ -11,6 +14,8 @@ export type Q = {
   // related_topic's raw, often-duplicated sheet text. Falls back to
   // related_topic wherever a row hasn't been classified yet.
   topic_ai: string | null;
+  // When it was asked (YYYY-MM-DD), if the sheet had a usable date.
+  asked_on?: string | null;
 };
 
 const PAGE = 30;
@@ -18,7 +23,7 @@ const DEFAULT_STATE: FilterState = { program: "All", company: "All", role: "All"
 
 const effectiveTopic = (x: Q) => (x.topic_ai || x.related_topic || "").trim();
 
-export default function QuestionsView({ initial }: { initial: Q[] }) {
+export default function QuestionsView({ initial, packets = [] }: { initial: Q[]; packets?: PacketLink[] }) {
   const [state, setState] = useUrlFilterState(DEFAULT_STATE);
   const [visible, setVisible] = useState(PAGE);
 
@@ -32,7 +37,7 @@ export default function QuestionsView({ initial }: { initial: Q[] }) {
 
   const filtered = useMemo(() => {
     const qLower = state.q.trim().toLowerCase();
-    return initial.filter(x =>
+    const rows = initial.filter(x =>
       (state.program === "All" || x.program.toLowerCase() === state.program.toLowerCase()) &&
       (state.company === "All" || x.company.trim() === state.company.trim()) &&
       (state.role === "All"    || x.role.trim()    === state.role.trim()) &&
@@ -40,6 +45,12 @@ export default function QuestionsView({ initial }: { initial: Q[] }) {
       (state.topic === "All"   || effectiveTopic(x) === state.topic) &&
       (!qLower || x.question.toLowerCase().includes(qLower) || effectiveTopic(x).toLowerCase().includes(qLower))
     );
+    // Newest asked first; questions without a date keep their existing
+    // order (most recently synced first) after the dated ones.
+    return rows
+      .map((x, i) => ({ x, i }))
+      .sort((a, b) => (b.x.asked_on || "").localeCompare(a.x.asked_on || "") || a.i - b.i)
+      .map(r => r.x);
   }, [initial, state]);
 
   // Fire a view event when filters narrow to a specific company+role, or to
@@ -78,15 +89,14 @@ export default function QuestionsView({ initial }: { initial: Q[] }) {
       </section>
 
       <section>
+        <PacketBanner company={state.company} packets={packets} />
         <div className="mb-3 flex items-baseline justify-between">
           <span className="font-mono text-sm text-mute">
             {filtered.length.toLocaleString()} match{filtered.length === 1 ? "" : "es"}
           </span>
         </div>
         {filtered.length === 0 ? (
-          <div className="rounded-2xl border border-edge bg-panel p-10 text-center text-mute">
-            Nothing matches these filters yet.
-          </div>
+          <EmptyState onClear={filtersActive(state) ? () => setState(EMPTY_FILTERS) : undefined} />
         ) : (
           <div className="grid grid-cols-1 gap-4 md:grid-cols-2 xl:grid-cols-3">
             {filtered.slice(0, visible).map((q, i) => <QuestionCard key={q.id} q={q} index={i} />)}
