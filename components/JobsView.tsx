@@ -2,6 +2,8 @@
 import { useEffect, useMemo, useState } from "react";
 import JobRow from "./JobRow";
 import RequestPacketButton from "./RequestPacketButton";
+import FilterBar, { EmptyState } from "./FilterBar";
+import { useUrlState } from "@/lib/useUrlState";
 
 export type Job = {
   id: number;
@@ -63,6 +65,8 @@ const POSTED_WITHIN = [
   { label: "Last 7 days", days: 7 },
 ];
 
+// Kept in the URL (?q=…&location=…&remoteOnly=1) so a filtered list can be
+// linked to — e.g. "open jobs at <company>" from a company packet.
 type State = { q: string; location: string; remoteOnly: boolean; jobType: string; category: string; postedDays: number | null };
 const DEFAULT_STATE: State = { q: "", location: "All", remoteOnly: false, jobType: "All", category: "All", postedDays: null };
 
@@ -90,7 +94,7 @@ function matchesLocation(job: Job, selected: string): boolean {
 }
 
 export default function JobsView({ initial }: { initial: Job[] }) {
-  const [state, setState] = useState<State>(DEFAULT_STATE);
+  const [state, setState] = useUrlState<State>(DEFAULT_STATE);
   const [visible, setVisible] = useState(PAGE);
 
   // One page-visit event per mount — the Tracking page dedupes this to
@@ -114,6 +118,14 @@ export default function JobsView({ initial }: { initial: Job[] }) {
     () => ROLE_CATEGORIES.map(c => c.label).filter(label => initial.some(j => categoryOf(j.title) === label)),
     [initial]
   );
+
+  // The 300 most-listed companies, as search suggestions.
+  const topCompanies = useMemo(() => {
+    const m = new Map<string, number>();
+    initial.forEach(j => m.set(j.company, (m.get(j.company) || 0) + 1));
+    return Array.from(m.entries()).sort((a, b) => b[1] - a[1]).slice(0, 300);
+  }, [initial]);
+  const active = JSON.stringify(state) !== JSON.stringify(DEFAULT_STATE);
 
   const filtered = useMemo(() => {
     const qL = state.q.trim().toLowerCase();
@@ -150,63 +162,47 @@ export default function JobsView({ initial }: { initial: Job[] }) {
         <RequestPacketButton />
       </section>
 
-      <section className="flex flex-wrap gap-3">
-        <input
-          value={state.q}
-          onChange={e => setState(s => ({ ...s, q: e.target.value }))}
-          placeholder="Search role or company…"
-          className="min-w-[200px] flex-1 rounded-xl border border-edge bg-panel px-4 py-2 text-sm text-text placeholder:text-mute focus:border-acad/50 focus:outline-none"
-        />
-        <select
-          value={state.location}
-          onChange={e => setState(s => ({ ...s, location: e.target.value }))}
-          className="rounded-xl border border-edge bg-panel px-3 py-2 text-sm text-text"
-        >
-          <option value="All">All locations</option>
-          <option value="Remote">Remote</option>
-          {CITIES.map(c => <option key={c.label} value={c.label}>{c.label}</option>)}
-        </select>
-        <select
-          value={state.category}
-          onChange={e => setState(s => ({ ...s, category: e.target.value }))}
-          className="rounded-xl border border-edge bg-panel px-3 py-2 text-sm text-text"
-        >
-          <option value="All">All roles</option>
-          {categories.map(c => <option key={c} value={c}>{c}</option>)}
-        </select>
-        <select
-          value={state.jobType}
-          onChange={e => setState(s => ({ ...s, jobType: e.target.value }))}
-          className="rounded-xl border border-edge bg-panel px-3 py-2 text-sm text-text"
-        >
-          <option value="All">All job types</option>
-          {jobTypes.map(t => <option key={t} value={t}>{JOB_TYPE_LABELS[t] || t}</option>)}
-        </select>
-        <select
-          value={state.postedDays ?? "any"}
-          onChange={e => setState(s => ({ ...s, postedDays: e.target.value === "any" ? null : Number(e.target.value) }))}
-          className="rounded-xl border border-edge bg-panel px-3 py-2 text-sm text-text"
-        >
-          {POSTED_WITHIN.map(p => <option key={p.label} value={p.days ?? "any"}>{p.label}</option>)}
-        </select>
-        <label className="flex items-center gap-2 rounded-xl border border-edge bg-panel px-3 py-2 text-sm text-mute">
-          <input
-            type="checkbox"
-            checked={state.remoteOnly}
-            onChange={e => setState(s => ({ ...s, remoteOnly: e.target.checked }))}
-          />
-          Remote only
-        </label>
-      </section>
+      <FilterBar
+        search={state.q}
+        onSearch={q => setState(s => ({ ...s, q }))}
+        placeholder="Search a role or company"
+        suggestions={topCompanies.map(([c, n]) => ({
+          group: "Companies", value: c, count: n,
+          onPick: () => setState(s => ({ ...s, q: c })),
+        }))}
+        facets={[
+          { key: "location", label: "Location", value: state.location, searchable: false,
+            options: [{ value: "Remote" }, ...CITIES.map(c => ({ value: c.label }))],
+            onChange: v => setState(s => ({ ...s, location: v })) },
+          { key: "category", label: "Role", value: state.category, searchable: false,
+            options: categories.map(c => ({ value: c })),
+            onChange: v => setState(s => ({ ...s, category: v })) },
+          { key: "jobType", label: "Job type", value: state.jobType, searchable: false,
+            options: jobTypes.map(t => ({ value: t, label: JOB_TYPE_LABELS[t] || t })),
+            onChange: v => setState(s => ({ ...s, jobType: v })) },
+          { key: "posted", label: "Posted", value: state.postedDays === null ? "All" : String(state.postedDays), searchable: false,
+            options: POSTED_WITHIN.filter(p => p.days !== null).map(p => ({ value: String(p.days), label: p.label })),
+            onChange: v => setState(s => ({ ...s, postedDays: v === "All" ? null : Number(v) })) },
+        ]}
+        extra={
+          <button
+            type="button"
+            onClick={() => setState(s => ({ ...s, remoteOnly: !s.remoteOnly }))}
+            aria-pressed={state.remoteOnly}
+            className={`rounded-full border px-3.5 py-1.5 text-sm transition-colors duration-200 ${
+              state.remoteOnly ? "border-acad/50 bg-acad/10 text-text" : "border-edge bg-panel text-mute hover:border-text/40 hover:text-text"
+            }`}
+          >Remote only</button>
+        }
+        onClearAll={() => setState(DEFAULT_STATE)}
+      />
 
       <section>
         <div className="mb-3 font-mono text-sm text-mute">
           {filtered.length.toLocaleString()} job{filtered.length === 1 ? "" : "s"}
         </div>
         {filtered.length === 0 ? (
-          <div className="rounded-2xl border border-edge bg-panel p-10 text-center text-mute">
-            Nothing matches these filters yet.
-          </div>
+          <EmptyState onClear={active ? () => setState(DEFAULT_STATE) : undefined} />
         ) : (
           <div className="flex flex-col gap-3">
             {filtered.slice(0, visible).map((j, i) => <JobRow key={j.id} job={j} category={categoryOf(j.title)} index={i} />)}

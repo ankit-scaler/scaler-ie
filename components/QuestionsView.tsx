@@ -1,6 +1,7 @@
 "use client";
 import { useMemo, useState, useEffect } from "react";
-import Filters, { FilterState } from "./Filters";
+import Filters, { FilterState, EMPTY_FILTERS, filtersActive } from "./Filters";
+import { EmptyState } from "./FilterBar";
 import QuestionCard from "./QuestionCard";
 import { useUrlFilterState } from "@/lib/useUrlFilterState";
 
@@ -84,9 +85,7 @@ export default function QuestionsView({ initial }: { initial: Q[] }) {
           </span>
         </div>
         {filtered.length === 0 ? (
-          <div className="rounded-2xl border border-edge bg-panel p-10 text-center text-mute">
-            Nothing matches these filters yet.
-          </div>
+          <EmptyState onClear={filtersActive(state) ? () => setState(EMPTY_FILTERS) : undefined} />
         ) : (
           <div className="grid grid-cols-1 gap-4 md:grid-cols-2 xl:grid-cols-3">
             {filtered.slice(0, visible).map((q, i) => <QuestionCard key={q.id} q={q} index={i} />)}
