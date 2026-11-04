@@ -134,6 +134,7 @@ QUESTION_TABS = {
     "Questions | DevOps":  {"round_col": "# Round - Name"},
     "Questions | AIML":    {"round_col": "Round"},
     "Questions | DSML":    {"round_col": "# Round - Name"},
+    "Questions | FDE":     {"round_col": "Round"},
 }
 ASSIGNMENT_TAB = "Assignments"
 LEARNERS_TAB = "Main"
