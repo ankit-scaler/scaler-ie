@@ -56,13 +56,13 @@ const JOB_TYPE_LABELS: Record<string, string> = {
   contract: "Contract", temporary: "Temporary", perdiem: "Per diem",
   volunteer: "Volunteer", other: "Other",
 };
-// No "Last 30 days" option — the data itself is already hard-capped to a
-// 7-day window (see app/jobs/page.tsx), so that option would always be
-// identical to "Any time" and misleadingly imply older jobs could exist.
+// The data itself is hard-capped to Today..Today-2 (see app/jobs/page.tsx),
+// so "Any time" already means the last 3 days; a longer option would be
+// identical to it and misleadingly imply older jobs could exist.
 const POSTED_WITHIN = [
-  { label: "Any time", days: null as number | null },
+  { label: "Any time (last 3 days)", days: null as number | null },
   { label: "Last 24 hours", days: 1 },
-  { label: "Last 7 days", days: 7 },
+  { label: "Last 2 days", days: 2 },
 ];
 
 // Kept in the URL (?q=…&location=…&remoteOnly=1) so a filtered list can be

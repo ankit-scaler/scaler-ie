@@ -1,5 +1,6 @@
 "use client";
 import { motion } from "framer-motion";
+import Monogram from "./Monogram";
 
 export default function AssignmentCard({
   a, index,
@@ -18,20 +19,23 @@ export default function AssignmentCard({
       whileHover={{ y: -3 }}
       className="group relative overflow-hidden rounded-2xl border border-edge bg-panel p-5 shadow-card transition-shadow hover:shadow-cardH"
     >
-      <div className="absolute inset-x-0 top-0 h-px bg-gradient-to-r from-aiml/60 to-transparent" />
-      <div className="mb-3 flex flex-wrap gap-2 text-xs">
-        {a.program && <span className="rounded-full border border-edge bg-panel2 px-3 py-1 text-mute">{a.program}</span>}
-        <span className="rounded-full border border-acad/30 bg-acad/10 px-3 py-1 font-medium text-acad">{a.company.trim()}</span>
-        <span className="rounded-full border border-dsml/30 bg-dsml/10 px-3 py-1 text-dsml">{a.role.trim()}</span>
-        {a.round && <span className="rounded-full border border-aiml/30 bg-aiml/10 px-3 py-1 text-aiml">{a.round}</span>}
+      <div className="mb-3 flex items-center gap-3">
+        <Monogram name={a.company} tone="aiml" />
+        <div className="min-w-0">
+          <div className="break-words font-display text-base font-semibold leading-tight">{a.company.trim()}</div>
+          <div className="break-words text-sm text-mute">{a.role.trim()}</div>
+        </div>
       </div>
-      <div className="mb-4 font-display text-lg leading-snug">{a.company.trim()} — {a.role.trim()}</div>
+      <div className="mb-4 flex flex-wrap gap-2 text-xs">
+        {a.round && <span className="rounded-full border border-edge px-3 py-1 text-mute">{a.round}</span>}
+        {a.program && <span className="rounded-full border border-edge px-3 py-1 text-mute">{a.program}</span>}
+      </div>
       {hasLink ? (
         <a
           href={a.link!}
           target="_blank" rel="noreferrer"
           onClick={trackOpen}
-          className="inline-flex items-center gap-2 rounded-xl border border-edge bg-panel2 px-3.5 py-2 text-sm text-text transition hover:border-text/40"
+          className="inline-flex min-h-10 items-center gap-2 rounded-xl border border-acad bg-acad px-4 py-2 text-sm font-medium text-ink transition hover:opacity-90"
         >
           Open assignment
           <svg className="h-3.5 w-3.5" viewBox="0 0 20 20" fill="currentColor"><path d="M7 3h10v10h-2V6.4L4.7 16.7 3.3 15.3 13.6 5H7V3z"/></svg>
