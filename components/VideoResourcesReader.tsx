@@ -1,5 +1,5 @@
 "use client";
-import Link from "next/link";
+import LoadingLink from "./LoadingLink";
 
 type Packet = { id: number; role: string; yoe: string };
 type Resource = { id: number; topic: string; video_link: string | null };
@@ -10,9 +10,9 @@ export default function VideoResourcesReader({ packet, resources }: { packet: Pa
 
   return (
     <div className="mx-auto max-w-3xl space-y-6">
-      <Link href="/packets" className="inline-flex items-center gap-1.5 text-sm text-mute hover:text-text">
+      <LoadingLink href="/packets" className="inline-flex items-center gap-1.5 text-sm text-mute hover:text-text">
         ← Back to packets
-      </Link>
+      </LoadingLink>
 
       <section>
         <div className="mb-3 flex flex-wrap gap-2 text-xs">
