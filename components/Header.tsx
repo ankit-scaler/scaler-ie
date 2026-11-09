@@ -1,5 +1,5 @@
 "use client";
-import Link from "next/link";
+import LoadingLink from "./LoadingLink";
 import { usePathname, useRouter } from "next/navigation";
 import { useEffect, useRef, useState } from "react";
 import { motion } from "framer-motion";
@@ -97,7 +97,7 @@ export default function Header() {
   );
 
   const tab = (href: string, label: string, active: boolean) => (
-    <Link
+    <LoadingLink
       key={href}
       href={href}
       aria-current={active ? "page" : undefined}
@@ -115,7 +115,7 @@ export default function Header() {
         <span className="absolute inset-0 rounded-full bg-panel2 opacity-0 ring-1 ring-inset ring-edge-strong transition-opacity duration-200 group-hover:opacity-100" />
       )}
       <span className="relative z-10">{label}</span>
-    </Link>
+    </LoadingLink>
   );
 
   const menuItem = "block px-4 py-2.5 text-sm text-text transition-colors hover:bg-panel2";
@@ -137,21 +137,21 @@ export default function Header() {
               </svg>
             </button>
           )}
-          <Link href="/" className="flex items-center gap-2 transition-opacity duration-200 hover:opacity-80">
+          <LoadingLink href="/" className="flex items-center gap-2 transition-opacity duration-200 hover:opacity-80">
             <ScalerLogo className="h-6 w-auto text-text" />
             <span className="hidden font-display text-xl leading-none sm:inline">Interview Vault</span>
-          </Link>
+          </LoadingLink>
         </div>
 
         {email && (
           <nav aria-label="Main" className="hidden min-w-0 flex-1 items-center justify-start gap-2 overflow-x-auto [-ms-overflow-style:none] [scrollbar-width:none] [&::-webkit-scrollbar]:hidden md:flex">
             {TABS.map(t => tab(t.href, t.label, t.match(path || "")))}
             <span className="mx-1 h-5 w-px shrink-0 self-center bg-edge" aria-hidden />
-            <Link
+            <LoadingLink
               href={OPEN_HIRINGS.href}
               aria-current={OPEN_HIRINGS.match(path || "") ? "page" : undefined}
               className={featuredPill(OPEN_HIRINGS.match(path || ""))}
-            >{OPEN_HIRINGS.label}</Link>
+            >{OPEN_HIRINGS.label}</LoadingLink>
             <a
               href={CRASH_COURSE}
               target="_blank" rel="noopener noreferrer"
@@ -197,9 +197,9 @@ export default function Header() {
                     <div className="truncate px-4 py-2.5 font-mono text-xs text-mute">{email}</div>
                     {isAdmin && (
                       <div className="divide-y divide-edge/60 border-t border-edge/60">
-                        <Link role="menuitem" href="/admin/tracking" className={menuItem}>Tracking</Link>
-                        <Link role="menuitem" href="/admin/access" className={menuItem}>Access management</Link>
-                        <Link role="menuitem" href="/admin/content" className={menuItem}>Content management</Link>
+                        <LoadingLink role="menuitem" href="/admin/tracking" className={menuItem}>Tracking</LoadingLink>
+                        <LoadingLink role="menuitem" href="/admin/access" className={menuItem}>Access management</LoadingLink>
+                        <LoadingLink role="menuitem" href="/admin/content" className={menuItem}>Content management</LoadingLink>
                       </div>
                     )}
                   </div>
@@ -233,20 +233,20 @@ export default function Header() {
           {TABS.map(t => {
             const active = t.match(path || "");
             return (
-              <Link
+              <LoadingLink
                 key={t.href}
                 href={t.href}
                 aria-current={active ? "page" : undefined}
                 className={`block rounded-xl px-3 py-2.5 text-base ${active ? "bg-panel2 text-text" : "text-mute hover:text-text"}`}
-              >{t.label}</Link>
+              >{t.label}</LoadingLink>
             );
           })}
           <div className="my-2 h-px bg-edge" aria-hidden />
-          <Link
+          <LoadingLink
             href={OPEN_HIRINGS.href}
             aria-current={OPEN_HIRINGS.match(path || "") ? "page" : undefined}
             className={`block rounded-xl px-3 py-2.5 text-base ${OPEN_HIRINGS.match(path || "") ? "bg-acad/15 font-semibold text-acad" : "text-acad"}`}
-          >{OPEN_HIRINGS.label}</Link>
+          >{OPEN_HIRINGS.label}</LoadingLink>
           <a
             href={CRASH_COURSE}
             target="_blank" rel="noopener noreferrer"
