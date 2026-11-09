@@ -30,8 +30,20 @@ const RANGES = [
   { k: "month", label: "30d" },
 ];
 
-const todayStr = () => new Date().toISOString().slice(0, 10);
-const daysAgoStr = (n: number) => new Date(Date.now() - n * 86400_000).toISOString().slice(0, 10);
+// India Standard Time has a fixed +05:30 offset (no DST), so every "day"
+// boundary in this file — stat tiles, chart buckets, CSV dedup keys, and
+// the date pickers' "today" — is anchored to IST rather than UTC. This
+// product's admins and learners are IST; a UTC boundary made the trend
+// charts silently drop real activity right after UTC midnight, and made
+// the date picker refuse to let IST admins pick "today" until ~5:30am
+// local time. app/api/admin/stats/route.ts uses the same IST anchoring for
+// its since/until window, so the two stay in sync.
+const IST_OFFSET = "+05:30";
+function istDateStr(input: string | number | Date): string {
+  return new Date(input).toLocaleDateString("en-CA", { timeZone: "Asia/Kolkata" });
+}
+const todayStr = () => istDateStr(new Date());
+const daysAgoStr = (n: number) => istDateStr(Date.now() - n * 86400_000);
 
 function formatDuration(totalMinutes: number) {
   if (totalMinutes < 60) return `${totalMinutes}m`;
@@ -224,7 +236,7 @@ function dailyRows<T>(rows: T[], emailFn: (r: T) => string, dateFn: (r: T) => st
   const seen = new Set<string>();
   const out: { email: string; date: string }[] = [];
   for (const r of rows) {
-    const email = emailFn(r), date = dateFn(r).slice(0, 10);
+    const email = emailFn(r), date = istDateStr(dateFn(r));
     const k = `${email}|${date}`;
     if (seen.has(k)) continue;
     seen.add(k);
@@ -245,6 +257,27 @@ function buildContentEngagementRows(packetViews: Stats["packetViews"], videoView
 }
 function buildPageVisitRows(views: Stats["views"], path: string) {
   return dailyRows(views.filter(v => v.path === path), v => v.user_email, v => v.created_at);
+}
+// Same per-learner-per-day dedup as dailyRows, plus a third key (job/packet)
+// so re-clicking the same item twice in a day collapses to one row, matching
+// the jobApplyClicks/companyPacketOpensUnique stat tiles exactly.
+function dailyItemRows<T>(rows: T[], emailFn: (r: T) => string, itemFn: (r: T) => string, dateFn: (r: T) => string): { email: string; item: string; date: string }[] {
+  const seen = new Set<string>();
+  const out: { email: string; item: string; date: string }[] = [];
+  for (const r of rows) {
+    const email = emailFn(r), item = itemFn(r), date = istDateStr(dateFn(r));
+    const k = `${email}|${item}|${date}`;
+    if (seen.has(k)) continue;
+    seen.add(k);
+    out.push({ email, item, date });
+  }
+  return out.sort((a, b) => b.date.localeCompare(a.date) || a.email.localeCompare(b.email));
+}
+function buildJobApplyRows(jobApplies: Stats["jobApplies"]) {
+  return dailyItemRows(jobApplies, a => a.user_email, a => String(a.job_id), a => a.created_at);
+}
+function buildCompanyPacketOpenRows(companyPacketOpens: Stats["companyPacketOpens"]) {
+  return dailyItemRows(companyPacketOpens, o => o.user_email, o => o.slug, o => o.created_at);
 }
 
 async function fetchStatsWindow(from: string, to: string): Promise<Stats | null> {
@@ -353,7 +386,7 @@ export default function AdminTracking() {
     if (range === "15d") return 15;
     if (range === "month") return 30;
     if (range === "custom") {
-      const ms = new Date(`${customTo}T00:00:00Z`).getTime() - new Date(`${customFrom}T00:00:00Z`).getTime();
+      const ms = new Date(`${customTo}T00:00:00${IST_OFFSET}`).getTime() - new Date(`${customFrom}T00:00:00${IST_OFFSET}`).getTime();
       return Math.max(1, Math.min(90, Math.round(ms / 86400_000) + 1));
     }
     return 7;
@@ -370,23 +403,23 @@ export default function AdminTracking() {
   //   - jobsUsers / companyPacketsUsers: visited /jobs / /company-packets that day
   const activityBuckets = useMemo(() => {
     if (!data) return [];
-    const end = range === "custom" ? new Date(`${customTo}T00:00:00Z`) : new Date();
+    const end = range === "custom" ? new Date(`${customTo}T00:00:00${IST_OFFSET}`) : new Date();
     const map = new Map<string, { day: string; active: Set<string>; searched: Set<string>; packets: Set<string>; videos: Set<string>; jobs: Set<string>; companyPackets: Set<string> }>();
     for (let i = bucketDays - 1; i >= 0; i--) {
       const d = new Date(end.getTime() - i * 86400_000);
-      const k = d.toISOString().slice(0, 10);
+      const k = istDateStr(d);
       map.set(k, { day: k.slice(5), active: new Set(), searched: new Set(), packets: new Set(), videos: new Set(), jobs: new Set(), companyPackets: new Set() });
     }
-    data.sessions.forEach(s => { map.get(s.started_at.slice(0, 10))?.active.add(s.user_email); });
+    data.sessions.forEach(s => { map.get(istDateStr(s.started_at))?.active.add(s.user_email); });
     data.views.forEach(v => {
-      const bucket = map.get(v.created_at.slice(0, 10));
+      const bucket = map.get(istDateStr(v.created_at));
       if (!bucket) return;
       if (isSearchView(v)) bucket.searched.add(v.user_email);
       if (v.path === "/jobs") bucket.jobs.add(v.user_email);
       if (v.path === "/company-packets") bucket.companyPackets.add(v.user_email);
     });
-    data.packetViews.forEach(v => { map.get(v.created_at.slice(0, 10))?.packets.add(v.user_email); });
-    data.videoViews.forEach(v => { map.get(v.created_at.slice(0, 10))?.videos.add(v.user_email); });
+    data.packetViews.forEach(v => { map.get(istDateStr(v.created_at))?.packets.add(v.user_email); });
+    data.videoViews.forEach(v => { map.get(istDateStr(v.created_at))?.videos.add(v.user_email); });
     return Array.from(map.values()).map(b => ({
       day: b.day,
       activeUsers: b.active.size,
@@ -399,7 +432,10 @@ export default function AdminTracking() {
   }, [data, bucketDays, range, customTo]);
 
   // Grain is (email, program, company, role) so you can see *who* read what, not just totals.
-  const companyRoleBreakdownAll = useMemo(() => data ? buildCompanyRoleBreakdown(data.views) : [], [data]);
+  // Scoped to path === "/" — Assignments narrows company+role too (its own
+  // page, "/assignments"), and without this filter its search events were
+  // silently mixed into what's labeled a Questions-only breakdown.
+  const companyRoleBreakdownAll = useMemo(() => data ? buildCompanyRoleBreakdown(data.views.filter(v => v.path === "/")) : [], [data]);
   const companyRoleBreakdown = useMemo(() => {
     const qL = breakdownQuery.trim().toLowerCase();
     if (!qL) return companyRoleBreakdownAll;
@@ -466,13 +502,17 @@ export default function AdminTracking() {
       r.user_email.toLowerCase().includes(qL) || (r.feedback_text || "").toLowerCase().includes(qL)
     );
   }, [feedbackRowsAll, feedbackQuery]);
+  // Computed from `feedbackRows` (the filtered set), not `feedbackRowsAll` —
+  // so searching for one learner updates the averages along with the table
+  // and its count, instead of silently leaving them at the whole window's
+  // average.
   const avgPlatformRating = useMemo(
-    () => feedbackRowsAll.length ? feedbackRowsAll.reduce((s, r) => s + r.platform_rating, 0) / feedbackRowsAll.length : 0,
-    [feedbackRowsAll]
+    () => feedbackRows.length ? feedbackRows.reduce((s, r) => s + r.platform_rating, 0) / feedbackRows.length : 0,
+    [feedbackRows]
   );
   const avgUsefulnessRating = useMemo(
-    () => feedbackRowsAll.length ? feedbackRowsAll.reduce((s, r) => s + r.usefulness_rating, 0) / feedbackRowsAll.length : 0,
-    [feedbackRowsAll]
+    () => feedbackRows.length ? feedbackRows.reduce((s, r) => s + r.usefulness_rating, 0) / feedbackRows.length : 0,
+    [feedbackRows]
   );
 
   // Page-wise "Total Visits" per section — each page's own page_views rows
@@ -481,41 +521,41 @@ export default function AdminTracking() {
   // page_views at all; opening a specific packet/video IS the visit, so
   // packetViews/videoViews rows are the visit signal directly.
   const questionsVisits = useMemo(
-    () => data ? uniqueDailyCount(data.views.filter(v => v.path === "/"), v => `${v.user_email}|${v.created_at.slice(0, 10)}`) : 0,
+    () => data ? uniqueDailyCount(data.views.filter(v => v.path === "/"), v => `${v.user_email}|${istDateStr(v.created_at)}`) : 0,
     [data]
   );
   const assignmentsVisits = useMemo(
-    () => data ? uniqueDailyCount(data.views.filter(v => v.path === "/assignments"), v => `${v.user_email}|${v.created_at.slice(0, 10)}`) : 0,
+    () => data ? uniqueDailyCount(data.views.filter(v => v.path === "/assignments"), v => `${v.user_email}|${istDateStr(v.created_at)}`) : 0,
     [data]
   );
   const packetsVisits = useMemo(
-    () => data ? uniqueDailyCount(data.packetViews, v => `${v.user_email}|${v.created_at.slice(0, 10)}`) : 0,
+    () => data ? uniqueDailyCount(data.packetViews, v => `${v.user_email}|${istDateStr(v.created_at)}`) : 0,
     [data]
   );
   const videosVisits = useMemo(
-    () => data ? uniqueDailyCount(data.videoViews, v => `${v.user_email}|${v.created_at.slice(0, 10)}`) : 0,
+    () => data ? uniqueDailyCount(data.videoViews, v => `${v.user_email}|${istDateStr(v.created_at)}`) : 0,
     [data]
   );
   const jobsVisits = useMemo(
-    () => data ? uniqueDailyCount(data.views.filter(v => v.path === "/jobs"), v => `${v.user_email}|${v.created_at.slice(0, 10)}`) : 0,
+    () => data ? uniqueDailyCount(data.views.filter(v => v.path === "/jobs"), v => `${v.user_email}|${istDateStr(v.created_at)}`) : 0,
     [data]
   );
   // "For one job one learner count 1 in a day" — dedup key includes job_id,
   // not just user+day, so applying to 3 different jobs in one day counts 3,
   // but re-clicking Apply on the same job twice in one day still counts 1.
   const jobApplyClicks = useMemo(
-    () => data ? uniqueDailyCount(data.jobApplies, a => `${a.user_email}|${a.job_id}|${a.created_at.slice(0, 10)}`) : 0,
+    () => data ? uniqueDailyCount(data.jobApplies, a => `${a.user_email}|${a.job_id}|${istDateStr(a.created_at)}`) : 0,
     [data]
   );
   const companyPacketsVisits = useMemo(
-    () => data ? uniqueDailyCount(data.views.filter(v => v.path === "/company-packets"), v => `${v.user_email}|${v.created_at.slice(0, 10)}`) : 0,
+    () => data ? uniqueDailyCount(data.views.filter(v => v.path === "/company-packets"), v => `${v.user_email}|${istDateStr(v.created_at)}`) : 0,
     [data]
   );
   // "Unique learners who read a packet" — same per-learner-per-item-per-day
   // dedup as job applies: reading 3 different company packets in one day
   // counts 3, re-opening the same one twice in one day counts 1.
   const companyPacketOpensUnique = useMemo(
-    () => data ? uniqueDailyCount(data.companyPacketOpens, o => `${o.user_email}|${o.slug}|${o.created_at.slice(0, 10)}`) : 0,
+    () => data ? uniqueDailyCount(data.companyPacketOpens, o => `${o.user_email}|${o.slug}|${istDateStr(o.created_at)}`) : 0,
     [data]
   );
 
@@ -602,6 +642,20 @@ export default function AdminTracking() {
     downloadCsv(`admin-company-packets-visits-${from}_to_${to}.csv`, rows);
   };
 
+  const exportJobApplyClicksCsv = async (from: string, to: string) => {
+    const d = await fetchStatsWindow(from, to);
+    if (!d) { alert("Couldn't load data for that range."); return; }
+    const rows: (string | number)[][] = [["Email", "Job ID", "Date"], ...buildJobApplyRows(d.jobApplies).map(r => [r.email, r.item, r.date])];
+    downloadCsv(`admin-open-hirings-applies-${from}_to_${to}.csv`, rows);
+  };
+
+  const exportCompanyPacketOpensCsv = async (from: string, to: string) => {
+    const d = await fetchStatsWindow(from, to);
+    if (!d) { alert("Couldn't load data for that range."); return; }
+    const rows: (string | number)[][] = [["Email", "Packet", "Date"], ...buildCompanyPacketOpenRows(d.companyPacketOpens).map(r => [r.email, r.item, r.date])];
+    downloadCsv(`admin-company-packets-opens-${from}_to_${to}.csv`, rows);
+  };
+
   const exportLearnerTimelineCsv = async (from: string, to: string) => {
     if (!lookupEmail.trim()) { alert("Pick a learner first."); return; }
     const d = await fetchStatsWindow(from, to);
@@ -618,7 +672,7 @@ export default function AdminTracking() {
     if (!d) { alert("Couldn't load data for that range."); return; }
     const rows: (string | number)[][] = [
       ["Program", "Company", "Role", "Email", "First time date", "Last time date", "Count"],
-      ...buildCompanyRoleBreakdown(d.views).map(r => [
+      ...buildCompanyRoleBreakdown(d.views.filter(v => v.path === "/")).map(r => [
         r.program, r.company, r.role, r.email,
         new Date(r.first).toLocaleString(), new Date(r.last).toLocaleString(), r.views,
       ]),
@@ -799,12 +853,40 @@ export default function AdminTracking() {
             <div className="py-4 text-center text-sm text-mute">No packet activity yet in this window.</div>
           )}
         </Card>
+        <Card title="Daily visits — Open Hirings" accent="topic"
+          action={<ExportButton defaultFrom={customFrom} defaultTo={customTo} onExport={exportJobsVisitsCsv} />}
+        >
+          <ResponsiveContainer width="100%" height={220}>
+            <LineChart data={activityBuckets}>
+              <CartesianGrid stroke="rgb(var(--edge))" vertical={false} />
+              <XAxis dataKey="day" stroke="rgb(var(--mute))" fontSize={11} />
+              <YAxis stroke="rgb(var(--mute))" fontSize={11} allowDecimals={false} />
+              <Tooltip contentStyle={{ background: "rgb(var(--panel))", border: "1px solid rgb(var(--edge))", borderRadius: 8, color: "rgb(var(--text))" }} />
+              <Line type="monotone" dataKey="jobsUsers" name="Visited Open Hirings" stroke="rgb(var(--topic))" strokeWidth={2} dot={false} />
+            </LineChart>
+          </ResponsiveContainer>
+        </Card>
+        <Card title="Daily visits — Company Packets" accent="aiml"
+          action={<ExportButton defaultFrom={customFrom} defaultTo={customTo} onExport={exportCompanyPacketsVisitsCsv} />}
+        >
+          <ResponsiveContainer width="100%" height={220}>
+            <LineChart data={activityBuckets}>
+              <CartesianGrid stroke="rgb(var(--edge))" vertical={false} />
+              <XAxis dataKey="day" stroke="rgb(var(--mute))" fontSize={11} />
+              <YAxis stroke="rgb(var(--mute))" fontSize={11} allowDecimals={false} />
+              <Tooltip contentStyle={{ background: "rgb(var(--panel))", border: "1px solid rgb(var(--edge))", borderRadius: 8, color: "rgb(var(--text))" }} />
+              <Line type="monotone" dataKey="companyPacketsUsers" name="Visited Company Packets" stroke="rgb(var(--aiml))" strokeWidth={2} dot={false} />
+            </LineChart>
+          </ResponsiveContainer>
+        </Card>
       </section>
 
       <SectionLabel accent="acad">Questions</SectionLabel>
 
       <section className="grid grid-cols-1 gap-3 sm:grid-cols-2">
-        <Stat label="Total visits (unique, per learner per day)" value={questionsVisits} accent="acad" />
+        <Stat label="Total visits (unique, per learner per day)" value={questionsVisits} accent="acad"
+          definition="Counts a search (picking a company+role or a topic) — opening the page without narrowing a filter isn't counted." />
+
       </section>
 
       <Card title={`Company & role breakdown (${companyRoleBreakdown.length})`} accent="acad">
@@ -892,7 +974,9 @@ export default function AdminTracking() {
       <SectionLabel accent="aiml">Packets</SectionLabel>
 
       <section className="grid grid-cols-1 gap-3 sm:grid-cols-2">
-        <Stat label="Total visits (unique, per learner per day)" value={packetsVisits} accent="aiml" />
+        <Stat label="Total visits (unique, per learner per day)" value={packetsVisits} accent="aiml"
+          definition="Counts an actual packet opened — browsing the list without opening one isn't counted." />
+
       </section>
 
       <Card title={`Packet reads — by learner (${packetByEmail.length})`} accent="aiml">
@@ -937,7 +1021,9 @@ export default function AdminTracking() {
       <SectionLabel accent="dsml">Assignments</SectionLabel>
 
       <section className="grid grid-cols-1 gap-3 sm:grid-cols-2">
-        <Stat label="Total visits (unique, per learner per day)" value={assignmentsVisits} accent="dsml" />
+        <Stat label="Total visits (unique, per learner per day)" value={assignmentsVisits} accent="dsml"
+          definition="Counts a search (narrowing to a company + role) — opening the page without narrowing a filter isn't counted." />
+
       </section>
 
       <Card title={`Assignment opens — by learner (${assignmentByEmail.length})`} accent="dsml">
@@ -982,7 +1068,9 @@ export default function AdminTracking() {
       <SectionLabel accent="devops">Videos</SectionLabel>
 
       <section className="grid grid-cols-1 gap-3 sm:grid-cols-2">
-        <Stat label="Total visits (unique, per learner per day)" value={videosVisits} accent="devops" />
+        <Stat label="Total visits (unique, per learner per day)" value={videosVisits} accent="devops"
+          definition="Counts an actual video opened — browsing the list without opening one isn't counted." />
+
       </section>
 
       <Card title={`Videos watched — by learner (${videoByEmail.length})`} accent="devops">
@@ -1027,44 +1115,28 @@ export default function AdminTracking() {
       <SectionLabel accent="topic">Open Hirings</SectionLabel>
 
       <section className="grid grid-cols-1 gap-3 sm:grid-cols-2">
-        <Stat label="Total visits (unique, per learner per day)" value={jobsVisits} accent="topic" />
-        <Stat label="Total clicks on Apply (unique, per job per learner per day)" value={jobApplyClicks} accent="topic" />
+        <Stat label="Total visits (unique, per learner per day)" value={jobsVisits} accent="topic"
+          action={<ExportButton defaultFrom={customFrom} defaultTo={customTo} onExport={exportJobsVisitsCsv}
+            label="CSV" className="rounded-lg border border-edge px-2 py-1 text-[11px] text-mute hover:text-text" />}
+          definition="Counts every page open, once per learner per day — no action required, unlike Questions/Assignments/Packets/Videos." />
+        <Stat label="Total clicks on Apply (unique, per job per learner per day)" value={jobApplyClicks} accent="topic"
+          action={<ExportButton defaultFrom={customFrom} defaultTo={customTo} onExport={exportJobApplyClicksCsv}
+            label="CSV" className="rounded-lg border border-edge px-2 py-1 text-[11px] text-mute hover:text-text" />}
+          definition="Counts each distinct job a learner clicks Apply on, once per job per learner per day — re-clicking the same job same day isn't counted again." />
       </section>
-
-      <Card title="Daily visits — Open Hirings" accent="topic"
-        action={<ExportButton defaultFrom={customFrom} defaultTo={customTo} onExport={exportJobsVisitsCsv} />}
-      >
-        <ResponsiveContainer width="100%" height={220}>
-          <LineChart data={activityBuckets}>
-            <CartesianGrid stroke="rgb(var(--edge))" vertical={false} />
-            <XAxis dataKey="day" stroke="rgb(var(--mute))" fontSize={11} />
-            <YAxis stroke="rgb(var(--mute))" fontSize={11} allowDecimals={false} />
-            <Tooltip contentStyle={{ background: "rgb(var(--panel))", border: "1px solid rgb(var(--edge))", borderRadius: 8, color: "rgb(var(--text))" }} />
-            <Line type="monotone" dataKey="jobsUsers" name="Visited Open Hirings" stroke="rgb(var(--topic))" strokeWidth={2} dot={false} />
-          </LineChart>
-        </ResponsiveContainer>
-      </Card>
 
       <SectionLabel accent="aiml">Company Packets</SectionLabel>
 
       <section className="grid grid-cols-1 gap-3 sm:grid-cols-2">
-        <Stat label="Total visits (unique, per learner per day)" value={companyPacketsVisits} accent="aiml" />
-        <Stat label="Unique learners who read a packet (Open Link)" value={companyPacketOpensUnique} accent="aiml" />
+        <Stat label="Total visits (unique, per learner per day)" value={companyPacketsVisits} accent="aiml"
+          action={<ExportButton defaultFrom={customFrom} defaultTo={customTo} onExport={exportCompanyPacketsVisitsCsv}
+            label="CSV" className="rounded-lg border border-edge px-2 py-1 text-[11px] text-mute hover:text-text" />}
+          definition="Counts every page open, once per learner per day — no action required, unlike Questions/Assignments/Packets/Videos." />
+        <Stat label="Unique learners who read a packet (Open Link)" value={companyPacketOpensUnique} accent="aiml"
+          action={<ExportButton defaultFrom={customFrom} defaultTo={customTo} onExport={exportCompanyPacketOpensCsv}
+            label="CSV" className="rounded-lg border border-edge px-2 py-1 text-[11px] text-mute hover:text-text" />}
+          definition="Counts each distinct packet a learner opens via Open Link, once per packet per learner per day." />
       </section>
-
-      <Card title="Daily visits — Company Packets" accent="aiml"
-        action={<ExportButton defaultFrom={customFrom} defaultTo={customTo} onExport={exportCompanyPacketsVisitsCsv} />}
-      >
-        <ResponsiveContainer width="100%" height={220}>
-          <LineChart data={activityBuckets}>
-            <CartesianGrid stroke="rgb(var(--edge))" vertical={false} />
-            <XAxis dataKey="day" stroke="rgb(var(--mute))" fontSize={11} />
-            <YAxis stroke="rgb(var(--mute))" fontSize={11} allowDecimals={false} />
-            <Tooltip contentStyle={{ background: "rgb(var(--panel))", border: "1px solid rgb(var(--edge))", borderRadius: 8, color: "rgb(var(--text))" }} />
-            <Line type="monotone" dataKey="companyPacketsUsers" name="Visited Company Packets" stroke="rgb(var(--aiml))" strokeWidth={2} dot={false} />
-          </LineChart>
-        </ResponsiveContainer>
-      </Card>
 
       <SectionLabel accent="acad">Learner Lookup</SectionLabel>
 

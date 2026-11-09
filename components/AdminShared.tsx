@@ -17,13 +17,17 @@ export function SectionLabel({ children, accent = "acad" }: { children: React.Re
   );
 }
 
-export function Stat({ label, value, accent = "acad" }: { label: string; value: number | string; accent?: Accent }) {
+export function Stat({ label, value, accent = "acad", action, definition }: { label: string; value: number | string; accent?: Accent; action?: React.ReactNode; definition?: string }) {
   const a = ACCENTS[accent];
   return (
     <div className="relative overflow-hidden rounded-2xl border border-edge bg-panel p-5 shadow-card">
       <div className={`absolute inset-x-0 top-0 h-[3px] ${a.bar}`} />
-      <div className={`font-mono text-[11px] font-bold uppercase tracking-widest ${a.text}`}>{label}</div>
+      <div className="flex items-start justify-between gap-3">
+        <div className={`font-mono text-[11px] font-bold uppercase tracking-widest ${a.text}`}>{label}</div>
+        {action}
+      </div>
       <div className="mt-1 font-display text-4xl">{typeof value === "number" ? value.toLocaleString() : value}</div>
+      {definition && <div className="mt-1.5 text-xs leading-snug text-mute">{definition}</div>}
     </div>
   );
 }
