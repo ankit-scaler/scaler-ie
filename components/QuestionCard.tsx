@@ -1,16 +1,13 @@
 "use client";
 import { motion } from "framer-motion";
+import Monogram, { Tone } from "./Monogram";
 
 const BAR: Record<string, string> = {
   Academy: "bg-acad", DSML: "bg-dsml", AIML: "bg-aiml", DevOps: "bg-devops", FDE: "bg-topic",
 };
 const DOT = BAR;
-const BADGE: Record<string, string> = {
-  Academy: "border-acad/30 bg-acad/10 text-acad",
-  DSML:    "border-dsml/30 bg-dsml/10 text-dsml",
-  AIML:    "border-aiml/30 bg-aiml/10 text-aiml",
-  DevOps:  "border-devops/30 bg-devops/10 text-devops",
-  FDE:     "border-topic/30 bg-topic/10 text-topic",
+const TONE: Record<string, Tone> = {
+  Academy: "acad", DSML: "dsml", AIML: "aiml", DevOps: "devops", FDE: "topic",
 };
 const TOPIC_TEXT: Record<string, string> = {
   Academy: "text-acad", DSML: "text-dsml", AIML: "text-aiml", DevOps: "text-devops", FDE: "text-topic",
@@ -36,18 +33,19 @@ export default function QuestionCard({
       whileHover={{ y: -3 }}
       className="group relative flex h-full flex-col overflow-hidden rounded-2xl border border-edge bg-panel p-5 shadow-card transition-shadow hover:shadow-cardH"
     >
-      <div className={`absolute inset-x-0 top-0 h-[3px] ${BAR[prog]}`} />
-      <div className="mb-3 flex flex-wrap items-center gap-2 text-xs">
-        <span className={`inline-flex items-center gap-1.5 rounded-full border px-3 py-1 font-medium ${BADGE[prog]}`}>
+      <div className="mb-4 flex items-center gap-3">
+        <Monogram name={q.company} tone={TONE[prog]} />
+        <div className="min-w-0">
+          <div className="break-words font-display text-base font-semibold leading-tight">{q.company.trim()}</div>
+          <div className="break-words text-sm text-mute">{q.role.trim()}{q.round ? ` · ${q.round}` : ""}</div>
+        </div>
+        <span className={`ml-auto inline-flex shrink-0 items-center gap-1.5 font-mono text-[11px] uppercase tracking-wider ${TOPIC_TEXT[prog]}`}>
           <span className={`h-1.5 w-1.5 rounded-full ${DOT[prog]}`} />{q.program}
         </span>
-        <span className="rounded-full border border-acad/30 bg-acad/10 px-3 py-1 text-acad">{q.company.trim()}</span>
-        <span className="rounded-full border border-dsml/30 bg-dsml/10 px-3 py-1 text-dsml">{q.role.trim()}</span>
-        {q.round && <span className="rounded-full border border-aiml/30 bg-aiml/10 px-3 py-1 text-aiml">{q.round}</span>}
       </div>
-      <p className="whitespace-pre-wrap break-words text-base leading-relaxed text-text">{q.question}</p>
+      <p className="whitespace-pre-wrap break-words text-[15.5px] leading-relaxed text-text">{q.question}</p>
       {topic && (
-        <div className="mt-auto flex items-start gap-2 border-t border-edge/60 pt-3 text-sm text-mute">
+        <div className="mt-4 flex items-start gap-2 border-t border-edge/60 pt-3 text-sm text-mute">
           <span className={`shrink-0 font-mono uppercase tracking-widest text-[11px] ${TOPIC_TEXT[prog]}`}>Topic</span>
           <span className="break-words text-text/80">{topic}</span>
         </div>

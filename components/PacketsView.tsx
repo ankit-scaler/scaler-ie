@@ -1,6 +1,7 @@
 "use client";
 import { useMemo } from "react";
 import LoadingLink from "./LoadingLink";
+import Monogram from "./Monogram";
 import { motion } from "framer-motion";
 import { useUrlParam } from "@/lib/useUrlParam";
 
@@ -55,19 +56,21 @@ function PacketCard({ packet, index }: { packet: Packet; index: number }) {
       whileHover={{ y: -3 }}
       className="group relative overflow-hidden rounded-2xl border border-edge bg-panel p-5 shadow-card transition-shadow hover:shadow-cardH"
     >
-      <div className="absolute inset-x-0 top-0 h-px bg-gradient-to-r from-acad/60 to-transparent" />
-      <div className="mb-3 flex flex-wrap gap-2 text-xs">
-        <span className="rounded-full border border-edge bg-panel2 px-3 py-1 font-medium">{packet.role}</span>
-        <span className="rounded-full border border-edge bg-panel2 px-3 py-1 text-mute">{packet.yoe}</span>
+      <div className="mb-5 flex items-center gap-3">
+        <Monogram name={packet.role} tone="acad" />
+        <div className="min-w-0">
+          <div className="break-words font-display text-base font-semibold leading-tight">{packet.role}</div>
+          <div className="font-mono text-xs text-mute">{packet.yoe}</div>
+        </div>
       </div>
-      <div className="mb-4 font-display text-lg leading-snug">{packet.role} — {packet.yoe}</div>
 
       <div className="flex flex-wrap gap-2">
         {packet.hasVideoResources ? (
           <LoadingLink
             href={`/packets/${packet.id}/resources`}
-            className="inline-flex items-center gap-2 rounded-xl border border-edge bg-panel2 px-3.5 py-2 text-sm text-text transition hover:border-text/40"
+            className="inline-flex min-h-10 items-center gap-2 rounded-xl border border-edge bg-panel2 px-3.5 py-2 text-sm font-medium text-text transition hover:border-text/40"
           >
+            <svg className="h-3.5 w-3.5" viewBox="0 0 20 20" fill="currentColor"><path d="M6 4l10 6-10 6z"/></svg>
             Learning Resources
           </LoadingLink>
         ) : (
@@ -79,7 +82,8 @@ function PacketCard({ packet, index }: { packet: Packet; index: number }) {
         {hasDoc ? (
           <LoadingLink
             href={`/packets/${packet.id}`}
-            className="inline-flex items-center gap-2 rounded-xl border border-edge bg-panel2 px-3.5 py-2 text-sm text-text transition hover:border-text/40"
+            spinnerClassName="!border-ink/30 !border-t-ink"
+            className="inline-flex min-h-10 items-center gap-2 rounded-xl border border-acad bg-acad px-4 py-2 text-sm font-medium text-ink transition hover:opacity-90"
           >
             {packet.content_synced_at ? "Read Packet" : "Open Packet"}
             <svg className="h-3.5 w-3.5" viewBox="0 0 20 20" fill="currentColor"><path d="M7 3h10v10h-2V6.4L4.7 16.7 3.3 15.3 13.6 5H7V3z"/></svg>
