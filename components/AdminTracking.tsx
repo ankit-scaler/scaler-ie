@@ -376,11 +376,6 @@ export default function AdminTracking() {
     else setRange("custom");
   };
 
-  const uniqueUsers = useMemo(() => {
-    if (!data) return 0;
-    return new Set(data.sessions.map(s => s.user_email).concat(data.views.map(v => v.user_email))).size;
-  }, [data]);
-
   const bucketDays = useMemo(() => {
     if (range === "day") return 1;
     if (range === "15d") return 15;
@@ -786,12 +781,6 @@ export default function AdminTracking() {
       </section>
 
       <SectionLabel accent="acad">Overview</SectionLabel>
-
-      <section className="grid grid-cols-2 gap-3 md:grid-cols-3">
-        <Stat label="Unique users" value={uniqueUsers} accent="acad" />
-        <Stat label="Total views" value={data?.views.length ?? 0} accent="dsml" />
-        <Stat label="Admins" value={data?.admins.length ?? 0} accent="devops" />
-      </section>
 
       <section className="grid grid-cols-1 gap-4 lg:grid-cols-2">
         <Card title="Daily Visits (Opened App)" accent="acad"
