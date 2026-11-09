@@ -10,3 +10,14 @@
 - Reason: old digest counted "today so far" at run time, but the 23:00 IST job ran ~2:40 AM, so it counted only the first hours of the next day (22 vs ~81 on the site).
 - Rejected: just shifting the window to "yesterday" (still run-time dependent); keeping it in sync_sheet.py (needs Sheets creds at import, can't run on its own schedule).
 - Also: Tracking chart renamed "Daily Visits (Opened App)".
+
+## 2026-11-09: Jobs feed narrowed to software/data/AI roles
+- Decision: sync/sync_jobs.py is_relevant_title now requires a core tech signal (CORE_TECH: software/SDE/developer/backend/data/ML/AI/devops...) instead of the bare word "engineer"; denylist of non-tech disciplines + enterprise-suite stacks; drops Director/VP/Head/Principal/Distinguished; keeps bare "Engineering Manager", technical Program Managers, and Product Managers.
+- Reason: "engineer"/"engineering manager" matched mechanical, purchase, chip-design, automotive etc. Probe of one city x 8 searches: 119 distinct titles passed before, 84 after (all reviewed as tech).
+- Rejected: description-based filtering (not stored/scraped); keeping all program/product managers.
+- Existing DB rows are swept by prune_irrelevant on the next jobs sync run.
+
+## 2026-11-09: Jobs: nightly last-24h scrape, DB keeps Today/Today-1/Today-2 (IST)
+- Decision: sync_jobs.py HOURS_OLD=24 (append via upsert); prune by date_posted < Today-2 (IST), fallback synced_at for rows without a date. Jobs page cutoff and filter ("Last 2 days" replaces "Last 7 days") match.
+- Reason: user wants only the freshest jobs; synced_at-based pruning let rows live past their real age.
+- Note: job_applies.job_id has no FK, so apply history survives pruning. A skipped/blocked night is not back-filled.
