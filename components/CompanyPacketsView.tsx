@@ -1,6 +1,7 @@
 "use client";
 import { useEffect, useMemo, useState } from "react";
 import { motion } from "framer-motion";
+import Monogram, { Tone } from "./Monogram";
 import { PacketListItem, TRACK_LABELS, YOE_LABELS, Track, YoeBucket } from "@/lib/packets-db";
 
 const PAGE = 30;
@@ -9,13 +10,8 @@ const PAGE = 30;
 // slug rather than rendering rounds/questions natively in this app.
 const PACKET_GENERATOR_BASE = "https://interview-experiences-packets-creat.vercel.app/p/";
 
-const BAR: Record<Track, string> = { ACADEMY: "bg-acad", DEVOPS: "bg-devops", AIML: "bg-aiml", DSML: "bg-dsml" };
-const BADGE: Record<Track, string> = {
-  ACADEMY: "border-acad/30 bg-acad/10 text-acad",
-  DEVOPS:  "border-devops/30 bg-devops/10 text-devops",
-  AIML:    "border-aiml/30 bg-aiml/10 text-aiml",
-  DSML:    "border-dsml/30 bg-dsml/10 text-dsml",
-};
+const TONE: Record<Track, Tone> = { ACADEMY: "acad", DEVOPS: "devops", AIML: "aiml", DSML: "dsml" };
+const TRACK_TEXT: Record<Track, string> = { ACADEMY: "text-acad", DEVOPS: "text-devops", AIML: "text-aiml", DSML: "text-dsml" };
 
 type State = { track: "All" | Track; yoe: "All" | YoeBucket; company: string; role: string; q: string };
 const DEFAULT_STATE: State = { track: "All", yoe: "All", company: "All", role: "All", q: "" };
@@ -141,18 +137,24 @@ export default function CompanyPacketsView({ initial }: { initial: PacketListIte
                 whileHover={{ y: -3 }}
               >
                 <div className="group relative flex h-full flex-col overflow-hidden rounded-2xl border border-edge bg-panel p-5 shadow-card transition-shadow hover:shadow-cardH">
-                  <div className={`absolute inset-x-0 top-0 h-[3px] ${BAR[p.track]}`} />
-                  <div className="mb-3 flex flex-wrap items-center gap-2 text-xs">
-                    <span className={`rounded-full border px-3 py-1 font-medium ${BADGE[p.track]}`}>{TRACK_LABELS[p.track]}</span>
-                    <span className="rounded-full border border-edge-strong px-3 py-1 text-mute">{YOE_LABELS[p.yoeBucket]}</span>
+                  <div className="mb-3 flex items-center gap-3">
+                    <Monogram name={p.company} tone={TONE[p.track]} />
+                    <div className="min-w-0">
+                      <div className="break-words font-display text-base font-semibold leading-tight">{p.company}</div>
+                      <div className="break-words text-sm text-mute">{p.role}</div>
+                    </div>
+                    <span className={`ml-auto inline-flex shrink-0 items-center gap-1.5 font-mono text-[11px] uppercase tracking-wider ${TRACK_TEXT[p.track]}`}>
+                      <span className="h-1.5 w-1.5 rounded-full bg-current" />{TRACK_LABELS[p.track]}
+                    </span>
                   </div>
-                  <div className="font-display text-lg leading-snug">{p.company}</div>
-                  <div className="mt-1 text-sm text-mute">{p.role}</div>
+                  <div className="mb-4 flex flex-wrap gap-2 text-xs">
+                    <span className="rounded-full border border-edge px-3 py-1 text-mute">{YOE_LABELS[p.yoeBucket]}</span>
+                  </div>
                   <a
                     href={`${PACKET_GENERATOR_BASE}${p.slug}`}
                     target="_blank" rel="noopener noreferrer"
                     onClick={() => trackOpen(p.slug)}
-                    className="mt-4 inline-flex w-fit items-center gap-2 rounded-xl border border-edge bg-panel2 px-3.5 py-2 text-sm text-text transition hover:border-text/40"
+                    className="mt-auto inline-flex min-h-10 w-fit items-center gap-2 rounded-xl border border-acad bg-acad px-4 py-2 text-sm font-medium text-ink transition hover:opacity-90"
                   >
                     Open Link
                     <svg className="h-3.5 w-3.5" viewBox="0 0 20 20" fill="currentColor"><path d="M7 3h10v10h-2V6.4L4.7 16.7 3.3 15.3 13.6 5H7V3z"/></svg>
