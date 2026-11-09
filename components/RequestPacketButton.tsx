@@ -88,12 +88,24 @@ export default function RequestPacketButton() {
 
   return (
     <>
-      <button
-        onClick={() => setOpen(true)}
-        className="shrink-0 rounded-full border border-acad/40 bg-acad/10 px-4 py-2 text-sm font-medium text-acad transition hover:bg-acad/20"
-      >
-        Request Packet
-      </button>
+      {/* Outer ring is a spinning conic-gradient; the button sits on top
+          with its own solid background, so only the 2px gap between them
+          shows the moving gradient — a lightweight "animated border" with
+          no extra libraries. Easy to miss as a plain outline pill before
+          this, so it also gets a solid accent fill instead of a faint
+          border/10% tint. */}
+      <div className="relative shrink-0 overflow-hidden rounded-full p-[2px]">
+        <div
+          className="absolute inset-[-50%] animate-[spin_2.5s_linear_infinite] motion-reduce:animate-none"
+          style={{ background: "conic-gradient(from 0deg, rgb(var(--acad)), transparent 30%, transparent 70%, rgb(var(--acad)))" }}
+        />
+        <button
+          onClick={() => setOpen(true)}
+          className="relative z-10 rounded-full bg-acad px-4 py-2 text-sm font-semibold text-ink shadow-[0_0_16px_-2px_rgb(var(--acad)/0.7)] transition hover:opacity-90"
+        >
+          Request Packet
+        </button>
+      </div>
 
       {open && createPortal(
         <div
