@@ -1,10 +1,14 @@
 "use client";
 import { motion } from "framer-motion";
+import Monogram, { Tone } from "./Monogram";
 
 const BAR: Record<string, string> = {
   Academy: "bg-acad", DSML: "bg-dsml", AIML: "bg-aiml", DevOps: "bg-devops", FDE: "bg-topic",
 };
 const DOT = BAR;
+const TONE: Record<string, Tone> = {
+  Academy: "acad", DSML: "dsml", AIML: "aiml", DevOps: "devops", FDE: "topic",
+};
 const TOPIC_TEXT: Record<string, string> = {
   Academy: "text-acad", DSML: "text-dsml", AIML: "text-aiml", DevOps: "text-devops", FDE: "text-topic",
 };
@@ -29,9 +33,6 @@ export default function QuestionCard({
 }) {
   const prog = q.program in BAR ? q.program : "Academy";
   const topic = q.topic_ai || q.related_topic;
-  // Company · role · round as one quiet line instead of four coloured
-  // pills — the programme keeps its colour; the rest is just context.
-  const meta = [q.role.trim(), q.round].filter(Boolean).join(" · ");
   return (
     <motion.article
       initial={{ opacity: 0, y: 14 }}
@@ -40,24 +41,22 @@ export default function QuestionCard({
       whileHover={{ y: -3 }}
       className="group relative flex h-full flex-col overflow-hidden rounded-2xl border border-edge bg-panel p-5 shadow-card transition-shadow hover:shadow-cardH"
     >
-      <div className={`absolute inset-x-0 top-0 h-[3px] ${BAR[prog]}`} />
-      <div className="mb-3 space-y-1">
-        <div className="flex items-center justify-between gap-3 text-xs">
-          <span className={`inline-flex items-center gap-1.5 font-medium ${TOPIC_TEXT[prog]}`}>
-            <span className={`h-1.5 w-1.5 rounded-full ${DOT[prog]}`} />{q.program}
-          </span>
-          {q.asked_on && askedLabel(q.asked_on) && (
-            <span className="font-mono text-mute">Asked {askedLabel(q.asked_on)}</span>
-          )}
+      <div className="mb-4 flex items-center gap-3">
+        <Monogram name={q.company} tone={TONE[prog]} />
+        <div className="min-w-0">
+          <div className="break-words font-display text-base font-semibold leading-tight">{q.company.trim()}</div>
+          <div className="break-words text-sm text-mute">
+            {q.role.trim()}{q.round ? ` · ${q.round}` : ""}
+            {q.asked_on && askedLabel(q.asked_on) && <span className="font-mono text-xs"> · Asked {askedLabel(q.asked_on)}</span>}
+          </div>
         </div>
-        <div className="text-sm">
-          <span className="font-medium text-text">{q.company.trim()}</span>
-          {meta && <span className="text-mute"> · {meta}</span>}
-        </div>
+        <span className={`ml-auto inline-flex shrink-0 items-center gap-1.5 font-mono text-[11px] uppercase tracking-wider ${TOPIC_TEXT[prog]}`}>
+          <span className={`h-1.5 w-1.5 rounded-full ${DOT[prog]}`} />{q.program}
+        </span>
       </div>
-      <p className="whitespace-pre-wrap break-words text-base leading-relaxed text-text">{q.question}</p>
+      <p className="whitespace-pre-wrap break-words text-[15.5px] leading-relaxed text-text">{q.question}</p>
       {topic && (
-        <div className="mt-auto flex items-start gap-2 border-t border-edge/60 pt-3 text-sm text-mute">
+        <div className="mt-4 flex items-start gap-2 border-t border-edge/60 pt-3 text-sm text-mute">
           <span className={`shrink-0 font-mono uppercase tracking-widest text-[11px] ${TOPIC_TEXT[prog]}`}>Topic</span>
           <span className="break-words text-text/80">{topic}</span>
         </div>
