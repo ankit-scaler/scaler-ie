@@ -8,7 +8,8 @@ export const dynamic = "force-dynamic";
 
 const getAllJobs = unstable_cache(
   () => {
-    const cutoff = new Date(Date.now() - 7 * 86400_000).toISOString().slice(0, 10);
+    // Today, Today-1, Today-2 in IST — mirrors sync/sync_jobs.py's prune.
+    const cutoff = new Date(Date.now() + 5.5 * 3600_000 - 2 * 86400_000).toISOString().slice(0, 10);
     return fetchAllRows<Job>(
       "jobs", "id,site,title,company,location,is_remote,job_type,date_posted,job_url,search_role",
       q => q.gte("date_posted", cutoff)
