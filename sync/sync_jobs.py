@@ -5,7 +5,7 @@ the same SUPABASE_URL/SUPABASE_SERVICE_KEY secrets as sync_sheet.py.
 Never called live from the Next.js app — see
 docs/superpowers/specs/2026-10-29-apply-to-jobs-design.md for why.
 """
-import argparse, hashlib, os, sys, time
+import argparse, hashlib, os, re, sys, time
 from datetime import datetime, timedelta, timezone
 import pandas as pd
 from jobspy import scrape_jobs
@@ -24,8 +24,17 @@ ROLES = [
 ]
 CITIES = ["Bangalore, India", "Hyderabad, India", "Pune, India", "Gurgaon, India", "Mumbai, India", "Chennai, India"]
 RESULTS_WANTED = 15
-HOURS_OLD = 48
-PRUNE_AFTER_DAYS = 7
+# Each night only the latest day's postings are scraped and appended; the DB
+# then keeps just Today, Today-1 and Today-2 (IST dates) — see prune_old().
+HOURS_OLD = 24
+KEEP_DAYS = 3
+# IST is a fixed +05:30 (no DST), same anchor as the rest of the repo.
+IST = timezone(timedelta(hours=5, minutes=30))
+
+def keep_from_ist(now=None):
+    """Start (IST midnight) of the oldest day kept: Today-2 when KEEP_DAYS=3."""
+    now_ist = (now or datetime.now(timezone.utc)).astimezone(IST)
+    return now_ist.replace(hour=0, minute=0, second=0, microsecond=0) - timedelta(days=KEEP_DAYS - 1)
 # Pause between scrape_jobs() calls so ~56 back-to-back requests don't trip
 # a site's rate limiter any faster than normal, spaced-out traffic would.
 # Sites may still block some calls regardless (see the per-call try/except
@@ -36,18 +45,63 @@ CALL_DELAY_SECONDS = 3
 # Manager" search, matching on the generic word "Manager" rather than the
 # actual role) — this allowlist is the gate that keeps those out. A title
 # must contain at least one of these to be stored.
-RELEVANT_KEYWORDS = [
-    "engineer", "developer", "sde", "swe", "software",
-    "data scientist", "data analyst", "data engineer",
-    "machine learning",
-    "forward deployed",
-    "program manager", "programme manager", "technical program",
-    "product manager",
+#
+# The bare word "engineer" is NOT enough on its own — it matches every
+# discipline (design/billing/application/customer engineer, chip design...).
+# A title needs a core software/data/AI signal (CORE_TECH), or be one of the
+# manager shapes handled in is_relevant_title.
+CORE_TECH = [
+    "software", "sde", "sdet", "swe", "developer", "programmer",
+    "backend", "back-end", "back end", "frontend", "front-end", "front end",
+    "full stack", "full-stack", "fullstack", "devops", "sre", "site reliability",
+    "platform engineer", "infrastructure engineer", "cloud",
+    "data scientist", "data analyst", "data engineer", "analytics engineer",
+    "machine learning", "ml", "mlops", "ai", "genai", "gen ai", "llm",
+    "forward deployed", "android", "ios", "mobile",
+    "python", "java", "golang", "node.js", "nodejs", "react", ".net", "dotnet",
 ]
+CORE_TECH_RE = re.compile(r"(?<![\w.])(?:" + "|".join(re.escape(k) for k in CORE_TECH) + r")(?![\w])")
+# Very senior titles (typically 10+ yrs) — Scaler's packets target 2–8 yrs.
+TOO_SENIOR_RE = re.compile(r"\b(?:director|vp|vice president|head|principal|distinguished|chief|fellow)\b")
+# Shapes: "Engineering Manager ..." as the title itself (not "Systems/Process
+# Engineering Manager"), program managers only when technical, any product manager.
+ENG_MANAGER_RE = re.compile(r"^(?:(?:senior|sr\.?|staff|lead|associate)\s+)?engineering manager\b")
+PROGRAM_MANAGER_RE = re.compile(r"\bprogram(?:me)? manager\b")
+PRODUCT_MANAGER_RE = re.compile(r"\bproduct manager\b")
+TECHNICAL_RE = re.compile(r"\btechnical\b|\btech\b|\btpm\b")
+
+# "engineer"/"engineering manager" also match every non-software discipline
+# (mechanical, civil, purchase, automotive...), so a title that hits the
+# allowlist is still dropped if it names one of these. Whole-word/phrase
+# matches only (so "soc" doesn't hit "associate", "process" doesn't hit
+# "Data Processing Engineer"). Add new off-topic terms here as they show up.
+NON_TECH_KEYWORDS = [
+    "mechanical", "civil", "electrical", "electronics", "chemical", "structural",
+    "automotive", "automobile", "aerospace", "manufacturing", "industrial",
+    "construction", "production", "plant", "maintenance", "hvac", "piping",
+    "instrumentation", "mechatronics", "biomedical", "mining",
+    "purchase", "procurement", "supply chain", "sourcing",
+    "process engineer", "process engineering", "quality control",
+    "transmission", "financial integrity", "sales engineer",
+    "soc", "vlsi", "asic", "fpga", "rtl", "hardware",
+    "design engineer", "billing", "quantity surveyor", "physical security",
+    "static timing", "customer engineer", "field applications", "npd",
+    "marketing", "business developer", "real estate",
+    # Enterprise-suite / BI-consulting stacks, not what Scaler teaches.
+    "servicenow", "salesforce", "sap", "mainframe", "cobol", "alteryx",
+    "teradata", "mstr", "microstrategy", "informatica", "peoplesoft",
+]
+NON_TECH_RE = re.compile(r"\b(?:" + "|".join(re.escape(k) for k in NON_TECH_KEYWORDS) + r")\b")
 
 def is_relevant_title(title: str) -> bool:
     t = title.lower()
-    return any(k in t for k in RELEVANT_KEYWORDS)
+    if NON_TECH_RE.search(t) or TOO_SENIOR_RE.search(t):
+        return False
+    if PRODUCT_MANAGER_RE.search(t) or ENG_MANAGER_RE.search(t):
+        return True
+    if PROGRAM_MANAGER_RE.search(t):
+        return bool(TECHNICAL_RE.search(t) or CORE_TECH_RE.search(t))
+    return bool(CORE_TECH_RE.search(t))
 
 def norm(s):
     # A missing cell from df.to_dict("records") isn't always None — for
@@ -104,10 +158,9 @@ def rows_from_results(df: "pd.DataFrame | None", role: str) -> list[dict]:
             # one row instead of duplicating.
             "fingerprint": fp(site, job_url),
             # Supabase's `default now()` only fires on INSERT, never on an
-            # upsert's UPDATE path — set it explicitly on every row so a
-            # posting that's still being found every day keeps its freshness
-            # clock current, instead of aging past PRUNE_AFTER_DAYS from its
-            # original insert while still actually live.
+            # upsert's UPDATE path — set it explicitly on every row so it
+            # always reflects the last time the posting was seen (used by
+            # prune_old only for rows that have no date_posted).
             "synced_at": datetime.now(timezone.utc).isoformat(),
         })
     return out
@@ -186,8 +239,11 @@ def run(dry_run: bool, sweep_irrelevant: bool = False):
     for i in range(0, len(rows), 500):
         supa.table("jobs").upsert(rows[i:i + 500], on_conflict="fingerprint").execute()
 
-    cutoff = (datetime.now(timezone.utc) - timedelta(days=PRUNE_AFTER_DAYS)).isoformat()
-    supa.table("jobs").delete().lt("synced_at", cutoff).execute()
+    # Keep only Today, Today-1, Today-2 (IST) by the posting's own date.
+    # Rows with no date_posted fall back to when they were last seen.
+    keep_from = keep_from_ist()
+    supa.table("jobs").delete().lt("date_posted", keep_from.date().isoformat()).execute()
+    supa.table("jobs").delete().is_("date_posted", "null").lt("synced_at", keep_from.astimezone(timezone.utc).isoformat()).execute()
 
     # New rows are already filtered by is_relevant_title() before they're
     # stored, so re-reading the whole table every night only matters after
