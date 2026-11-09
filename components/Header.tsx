@@ -1,5 +1,5 @@
 "use client";
-import Link from "next/link";
+import LoadingLink from "./LoadingLink";
 import { usePathname, useRouter } from "next/navigation";
 import { useEffect, useRef, useState } from "react";
 import { motion } from "framer-motion";
@@ -60,7 +60,7 @@ export default function Header() {
     const { external = false, highlight = false } = opts;
     const active = !external && path === href;
     return (
-      <Link
+      <LoadingLink
         href={href}
         {...(external ? { target: "_blank", rel: "noopener noreferrer" } : {})}
         className={`group relative whitespace-nowrap rounded-full px-4 py-1.5 text-sm transition-colors duration-200 ${
@@ -81,21 +81,21 @@ export default function Header() {
           <span className="absolute inset-0 rounded-full bg-panel2 opacity-0 ring-1 ring-inset ring-edge-strong transition-opacity duration-200 group-hover:opacity-100" />
         ))}
         <span className="relative z-10">{label}</span>
-      </Link>
+      </LoadingLink>
     );
   };
 
   return (
     <header className="sticky top-0 z-40 border-b border-edge/60 bg-ink/70 backdrop-blur-xl">
       <div className="mx-auto flex w-full items-center justify-between gap-4 px-4 py-3 sm:px-6">
-        <Link href="/" className="flex shrink-0 items-center gap-2 transition-opacity duration-200 hover:opacity-80">
+        <LoadingLink href="/" className="flex shrink-0 items-center gap-2 transition-opacity duration-200 hover:opacity-80">
           <ScalerLogo className="h-6 w-auto text-text" />
           <span className="hidden font-display text-xl leading-none sm:inline">Interview Vault</span>
           <span className="relative hidden h-2 w-2 sm:inline-flex" title="Live">
             <span className="absolute inline-flex h-full w-full animate-ping rounded-full bg-red-500 opacity-75" />
             <span className="relative inline-flex h-2 w-2 rounded-full bg-red-500" />
           </span>
-        </Link>
+        </LoadingLink>
         {email && (
           <nav className="flex min-w-0 flex-1 items-center justify-start gap-2 overflow-x-auto [-ms-overflow-style:none] [scrollbar-width:none] [&::-webkit-scrollbar]:hidden">
             {tab("/", "Questions")}
@@ -148,21 +148,21 @@ export default function Header() {
                     <div className="truncate px-4 py-2.5 font-mono text-xs text-mute">{email}</div>
                     {isAdmin && (
                       <div className="divide-y divide-edge/60 border-t border-edge/60">
-                        <Link
+                        <LoadingLink
                           href="/admin/tracking"
                           onClick={() => setAccountMenuOpen(false)}
                           className="block px-4 py-2.5 text-sm text-text transition-colors hover:bg-panel2"
-                        >Tracking</Link>
-                        <Link
+                        >Tracking</LoadingLink>
+                        <LoadingLink
                           href="/admin/access"
                           onClick={() => setAccountMenuOpen(false)}
                           className="block px-4 py-2.5 text-sm text-text transition-colors hover:bg-panel2"
-                        >Access management</Link>
-                        <Link
+                        >Access management</LoadingLink>
+                        <LoadingLink
                           href="/admin/content"
                           onClick={() => setAccountMenuOpen(false)}
                           className="block px-4 py-2.5 text-sm text-text transition-colors hover:bg-panel2"
-                        >Content management</Link>
+                        >Content management</LoadingLink>
                       </div>
                     )}
                   </div>

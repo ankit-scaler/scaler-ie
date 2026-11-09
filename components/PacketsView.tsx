@@ -1,6 +1,6 @@
 "use client";
 import { useMemo } from "react";
-import Link from "next/link";
+import LoadingLink from "./LoadingLink";
 import { motion } from "framer-motion";
 import { useUrlParam } from "@/lib/useUrlParam";
 
@@ -64,12 +64,12 @@ function PacketCard({ packet, index }: { packet: Packet; index: number }) {
 
       <div className="flex flex-wrap gap-2">
         {packet.hasVideoResources ? (
-          <Link
+          <LoadingLink
             href={`/packets/${packet.id}/resources`}
             className="inline-flex items-center gap-2 rounded-xl border border-edge bg-panel2 px-3.5 py-2 text-sm text-text transition hover:border-text/40"
           >
             Learning Resources
-          </Link>
+          </LoadingLink>
         ) : (
           <span className="inline-flex items-center gap-2 rounded-xl border border-edge/60 bg-panel2/50 px-3.5 py-2 text-sm text-mute">
             Resources coming soon
@@ -77,13 +77,13 @@ function PacketCard({ packet, index }: { packet: Packet; index: number }) {
         )}
 
         {hasDoc ? (
-          <Link
+          <LoadingLink
             href={`/packets/${packet.id}`}
             className="inline-flex items-center gap-2 rounded-xl border border-edge bg-panel2 px-3.5 py-2 text-sm text-text transition hover:border-text/40"
           >
             {packet.content_synced_at ? "Read Packet" : "Open Packet"}
             <svg className="h-3.5 w-3.5" viewBox="0 0 20 20" fill="currentColor"><path d="M7 3h10v10h-2V6.4L4.7 16.7 3.3 15.3 13.6 5H7V3z"/></svg>
-          </Link>
+          </LoadingLink>
         ) : (
           <span className="inline-flex items-center gap-2 rounded-xl border border-edge/60 bg-panel2/50 px-3.5 py-2 text-sm text-mute">
             Packet coming soon
