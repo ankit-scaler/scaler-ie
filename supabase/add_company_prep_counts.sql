@@ -20,7 +20,7 @@ from (
   union all
   select company, 'a' from assignments
   union all
-  select company, 'j' from jobs where date_posted >= current_date - 7
+  select company, 'j' from jobs where date_posted >= (now() at time zone 'Asia/Kolkata')::date - 2
 ) t
 where btrim(coalesce(company, '')) <> ''
 group by 1;
