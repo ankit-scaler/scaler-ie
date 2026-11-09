@@ -794,7 +794,7 @@ export default function AdminTracking() {
       </section>
 
       <section className="grid grid-cols-1 gap-4 lg:grid-cols-2">
-        <Card title="Daily active users — opened the site" accent="acad"
+        <Card title="Daily Visits (Opened App)" accent="acad"
           action={<ExportButton defaultFrom={customFrom} defaultTo={customTo} onExport={exportActiveUsersCsv} />}
         >
           <ResponsiveContainer width="100%" height={220}>
