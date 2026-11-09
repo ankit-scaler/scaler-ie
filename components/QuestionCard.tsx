@@ -2,7 +2,7 @@
 import { motion } from "framer-motion";
 
 const BAR: Record<string, string> = {
-  Academy: "bg-acad", DSML: "bg-dsml", AIML: "bg-aiml", DevOps: "bg-devops",
+  Academy: "bg-acad", DSML: "bg-dsml", AIML: "bg-aiml", DevOps: "bg-devops", FDE: "bg-topic",
 };
 const DOT = BAR;
 const BADGE: Record<string, string> = {
@@ -10,9 +10,10 @@ const BADGE: Record<string, string> = {
   DSML:    "border-dsml/30 bg-dsml/10 text-dsml",
   AIML:    "border-aiml/30 bg-aiml/10 text-aiml",
   DevOps:  "border-devops/30 bg-devops/10 text-devops",
+  FDE:     "border-topic/30 bg-topic/10 text-topic",
 };
 const TOPIC_TEXT: Record<string, string> = {
-  Academy: "text-acad", DSML: "text-dsml", AIML: "text-aiml", DevOps: "text-devops",
+  Academy: "text-acad", DSML: "text-dsml", AIML: "text-aiml", DevOps: "text-devops", FDE: "text-topic",
 };
 
 export default function QuestionCard({
