@@ -21,3 +21,10 @@
 - Decision: sync_jobs.py HOURS_OLD=24 (append via upsert); prune by date_posted < Today-2 (IST), fallback synced_at for rows without a date. Jobs page cutoff and filter ("Last 2 days" replaces "Last 7 days") match.
 - Reason: user wants only the freshest jobs; synced_at-based pruning let rows live past their real age.
 - Note: job_applies.job_id has no FK, so apply history survives pruning. A skipped/blocked night is not back-filled.
+
+## 2026-11-09: UI refresh — Direction A "Refined" + non-scrolling nav
+- Decision: Monogram-based cards (Questions, Assignments, Packets), filled primary buttons, segmented icon nav at >=1440px, "Menu" dropdown below. Header highlight pills lose their icons at wide size to fit.
+- Reason: cards had four competing colored pills and flat buttons; user wanted no nav scrolling.
+- Why 1440px not 1280px: estimated full-nav width is ~1380px; a lower breakpoint would clip. Unmeasured — verify in browser; lower the `min-[1440px]` in Header.tsx if it fits sooner.
+- Rejected: directions B (dense grid) and C (glass/glow); icons-only and wrap-to-two-rows nav.
+- Not changed: Filters, Jobs and Company Packets cards (follow-up for consistency).

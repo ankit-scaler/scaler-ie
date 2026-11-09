@@ -4,11 +4,11 @@ import Link from "next/link";
 import { usePathname } from "next/navigation";
 import { FlightSpinner } from "./FlightLoader";
 
-type Props = Omit<React.ComponentProps<typeof Link>, "href"> & { href: string };
+type Props = Omit<React.ComponentProps<typeof Link>, "href"> & { href: string; spinnerClassName?: string };
 
 // next/link with instant click feedback: shows a spinner and blocks repeat
 // clicks until the route changes. (Next 14 has no useLinkStatus.)
-export default function LoadingLink({ href, onClick, className = "", children, target, ...rest }: Props) {
+export default function LoadingLink({ href, onClick, className = "", spinnerClassName = "", children, target, ...rest }: Props) {
   const path = usePathname();
   const [pending, setPending] = useState(false);
 
@@ -40,7 +40,7 @@ export default function LoadingLink({ href, onClick, className = "", children, t
       }}
     >
       {children}
-      {pending && <FlightSpinner className="relative z-10 ml-2 inline-block h-3.5 w-3.5 align-middle" />}
+      {pending && <FlightSpinner className={`relative z-10 ml-2 inline-block h-3.5 w-3.5 align-middle ${spinnerClassName}`} />}
     </Link>
   );
 }
