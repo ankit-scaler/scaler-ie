@@ -147,19 +147,6 @@ def get_col(row, name):
             return norm(v)
     return ""
 
-def bump_cache_versions(supa, names):
-    """Tell the website its cached copy of these datasets is out of date
-    (see lib/questions-chunks.ts): learners' browsers keep question chunks
-    for up to a day, keyed on this stamp plus the row count and newest id,
-    so moving it is what makes in-place changes (like new AI topics) show up
-    at once. Never fails the sync — if the cache_versions table isn't there
-    yet, the count and newest id still change the version."""
-    now = datetime.utcnow().isoformat() + "Z"
-    try:
-        supa.table("cache_versions").upsert([{"name": n, "updated_at": now} for n in names], on_conflict="name").execute()
-    except Exception as e:
-        print(f"cache_versions bump skipped: {e}", file=sys.stderr)
-
 def dedupe_by_fp(rows):
     seen, out = set(), []
     for r in rows:
@@ -582,11 +569,6 @@ def main():
         classify_new_topics(supa)
     except Exception as e:
         print(f"topic classification error: {e}", file=sys.stderr)
-
-    # Only reached when the questions upsert (and hard-refresh delete) above
-    # succeeded — they raise otherwise. The website also keys its cache on
-    # row count + newest id, so a crash before this still changes the version.
-    bump_cache_versions(supa, ["questions"])
 
     # --- Assignments ---
     try:

@@ -27,28 +27,33 @@ const MAIN_TABS: { href: string; label: string; icon: keyof typeof ICON }[] = [
 const CORTEX_URL = "https://cortex-by-scaler.up.railway.app/login";
 
 // Admin check once per visit, not on every page load: each check is a Vercel
-// function call. The answer is kept for this tab's session (sessionStorage),
-// keyed by email so switching accounts re-checks. Only a definite yes (200)
-// or no (403) is kept; a 401 (e.g. a token mid-refresh), a network or a
-// server error is retried on the next page load.
-// Someone made admin mid-visit sees the admin links after opening a new tab.
-let adminCheck: { email: string; p: Promise<boolean> } | null = null;
+// function call. The answer is kept in sessionStorage, keyed by email so
+// switching accounts re-checks. A yes (200) is kept for the tab session; a
+// no (403) for NO_TTL_MS, so someone made admin mid-visit sees the admin
+// links within minutes. A 401 (e.g. a token mid-refresh), network or server
+// error isn't kept and is retried on the next page load.
+const NO_TTL_MS = 10 * 60_000;
+const adminChecks = new Map<string, Promise<boolean>>();  // in-flight, per email
 function isAdminOnce(email: string): Promise<boolean> {
   const key = `vault-admin:${email.toLowerCase()}`;
   try {
     const kept = sessionStorage.getItem(key);
-    if (kept === "1" || kept === "0") return Promise.resolve(kept === "1");
+    if (kept === "1") return Promise.resolve(true);
+    if (kept && kept.startsWith("0:") && Date.now() - Number(kept.slice(2)) < NO_TTL_MS) return Promise.resolve(false);
   } catch {}
-  if (adminCheck?.email === email) return adminCheck.p;  // getUser and onAuthStateChange both fire on load
+  // getUser and onAuthStateChange both fire on load: share one request.
+  const pending = adminChecks.get(key);
+  if (pending) return pending;
   const p = fetch("/api/admin/stats?check=1")
     .then(r => {
       if (r.ok || r.status === 403) {
-        try { sessionStorage.setItem(key, r.ok ? "1" : "0"); } catch {}
-      } else adminCheck = null;
+        try { sessionStorage.setItem(key, r.ok ? "1" : `0:${Date.now()}`); } catch {}
+      }
       return r.ok;
     })
-    .catch(() => { adminCheck = null; return false; });
-  adminCheck = { email, p };
+    .catch(() => false)
+    .finally(() => adminChecks.delete(key));  // only this email's entry, never another account's
+  adminChecks.set(key, p);
   return p;
 }
 
@@ -69,10 +74,15 @@ export default function Header() {
   const isPacketOpen = /^\/packets\/[^/]+/.test(path || "");
 
   useEffect(() => {
+    // A slow answer for an account the user has since switched away from
+    // must not set the admin links for the new one.
+    let current: string | null = null;
     const applyUser = async (e: string | null) => {
+      current = e;
       setEmail(e);
       if (e) {
-        setAdmin(await isAdminOnce(e));
+        const yes = await isAdminOnce(e);
+        if (current === e) setAdmin(yes);
       } else {
         setAdmin(false);
       }

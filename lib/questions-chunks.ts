@@ -1,4 +1,4 @@
-import { unstable_cache, revalidateTag } from "next/cache";
+import { unstable_cache } from "next/cache";
 import { supabaseAdmin } from "@/lib/supabase-server";
 import type { Q } from "@/components/QuestionsView";
 
@@ -10,57 +10,65 @@ import type { Q } from "@/components/QuestionsView";
 // Next's data cache silently refuses entries over 2 MB, so the Supabase
 // fetch behind it was never cached either. Now the page only ships a small
 // manifest (version + chunk count); the browser fetches each chunk from
-// /api/questions/[chunk]?v=<version> and keeps it for up to a day.
+// /api/questions/[chunk]?v=<version> and keeps it.
 //
-// The version is built from the data itself (row count + newest id) plus
-// the "questions" stamp in cache_versions, which the nightly sync moves
-// after the questions step and Admin topic edits move straight away. So
-// inserted or deleted rows always change the version, even if the sync
-// crashes before stamping or the table hasn't been created yet; in-place
-// edits that don't move the stamp are bounded by the one-day browser cache.
+// The version comes from the data: newest questions.updated_at + row count
+// + newest id. A trigger moves updated_at whenever a row's content changes
+// (sync upsert, AI topic classification, Admin edits, edits made straight in
+// Supabase; see supabase/add_questions_updated_at.sql), inserts move the
+// newest id and deletes move the count. So any change gives a new version
+// within VERSION_TTL, and a new version means new chunk URLs. Nights where
+// the sheet didn't change keep the same version, so nothing is rebuilt.
+// Until that migration is run, edits that don't add or remove rows can take
+// up to FALLBACK_MAX_AGE to reach browsers.
 //
 // Chunks are fixed id ranges per version (boundaries worked out once per
-// version), not row offsets, so rows inserted or deleted while a chunk is
-// being read can't shift other rows out of it.
+// version), read with keyset paging, so rows inserted or deleted while a
+// chunk is being read can't shift other rows out of it.
 
-export const ROWS_PER_CHUNK = 2500;  // ~0.85 MB of question rows; well under Next's 2 MB cache entry limit
-export const BROWSER_MAX_AGE = 86_400;  // seconds a browser may reuse a chunk
-const REQUEST_ROWS = 1000;           // Supabase's per-request row cap
+const ROWS_PER_CHUNK = 2000;          // ~0.7 MB at today's average row size: ~3x headroom under Next's 2 MB cache entry limit
+const SIZE_WARN_BYTES = 1_500_000;    // log well before a chunk gets near that limit
+const REQUEST_ROWS = 1000;            // Supabase's per-request row cap
+const VERSION_TTL = 60;               // seconds a server reuses the version before re-checking
+export const EXACT_MAX_AGE = 86_400;  // browser cache per chunk when the version tracks every change
+export const FALLBACK_MAX_AGE = 3_600; // ...and when updated_at isn't there yet
 const COLS = "id,program,company,role,round,question,related_topic,topic_ai";
 
-type VersionInfo = { version: string; total: number };
+type VersionInfo = { version: string; total: number; exact: boolean };
 
-// Cheap: three tiny queries, at most once a minute per server instance.
+// Three tiny queries, at most once a minute (shared across server instances).
 const getVersionInfo = unstable_cache(
   async (): Promise<VersionInfo> => {
     const sb = supabaseAdmin();
-    const [stampRes, countRes, newestRes] = await Promise.all([
-      sb.from("cache_versions").select("updated_at").eq("name", "questions").maybeSingle(),
+    const [countRes, newestRes, touchedRes] = await Promise.all([
       sb.from("questions").select("id", { count: "exact", head: true }),
       sb.from("questions").select("id").order("id", { ascending: false }).limit(1),
+      sb.from("questions").select("updated_at").order("updated_at", { ascending: false }).limit(1),
     ]);
     if (countRes.error) throw new Error(`questions count failed: ${countRes.error.message}`);
     if (newestRes.error) throw new Error(`questions newest id failed: ${newestRes.error.message}`);
-    // cache_versions missing (migration not run) just means no stamp part.
-    const stamp = !stampRes.error && stampRes.data ? new Date(stampRes.data.updated_at as string).getTime().toString(36) : "n";
     const total = countRes.count ?? 0;
     const newest = (newestRes.data?.[0]?.id as number | undefined) ?? 0;
-    return { version: `${stamp}.${total.toString(36)}.${newest.toString(36)}`, total };
+    // An error here means the updated_at migration hasn't been run yet.
+    const exact = !touchedRes.error;
+    const touched = exact && touchedRes.data?.[0]?.updated_at
+      ? new Date(touchedRes.data[0].updated_at as string).getTime().toString(36) : "n";
+    return { version: `${touched}.${total.toString(36)}.${newest.toString(36)}`, total, exact };
   },
   ["questions-version"],
-  { revalidate: 60, tags: ["questions"] }
+  { revalidate: VERSION_TTL }
 );
 
-export type QuestionsManifest = { version: string; chunks: number; total: number };
-type Bounds = { version: string; chunks: number; total: number; edges: number[] };
+type Bounds = VersionInfo & { chunks: number; edges: number[] };
 
-// edges[k-1] is the highest id in chunk k (k >= 1), in newest-first order:
-// chunk 0 = ids above edges[0], chunk k = (edges[k], edges[k-1]], and the
-// last chunk = everything at or below its edge. Every id falls in exactly
-// one chunk, whatever changes later.
+// edges[k-1] is the highest id in chunk k (k >= 1), newest first: chunk 0
+// = ids above edges[0], chunk k = (edges[k], edges[k-1]], and the last
+// chunk = everything at or below its edge. Every id falls in exactly one
+// chunk, whatever changes later. Cached per version only — a new version
+// gets new keys, so nothing ever needs invalidating.
 async function getBounds(): Promise<Bounds> {
-  const { version, total } = await getVersionInfo();
-  const chunks = Math.max(1, Math.ceil(total / ROWS_PER_CHUNK));
+  const info = await getVersionInfo();
+  const chunks = Math.max(1, Math.ceil(info.total / ROWS_PER_CHUNK));
   const edges = await unstable_cache(async () => {
     const sb = supabaseAdmin();
     const res = await Promise.all(Array.from({ length: chunks - 1 }, (_, i) => {
@@ -72,57 +80,70 @@ async function getBounds(): Promise<Bounds> {
     // A row deleted since the count could leave an offset past the end;
     // then that and later chunks are simply empty.
     return res.map(r => (r.data?.[0]?.id as number | undefined) ?? 0);
-  }, ["questions-edges", version], { revalidate: 86_400, tags: ["questions"] })();
-  return { version, chunks, total, edges };
+  }, ["questions-edges", info.version], { revalidate: 86_400 })();
+  return { ...info, chunks, edges };
 }
+
+export type QuestionsManifest = { version: string; chunks: number };
 
 export async function getQuestionsManifest(): Promise<QuestionsManifest> {
-  const { version, chunks, total } = await getBounds();
-  return { version, chunks, total };
+  const { version, chunks } = await getBounds();
+  return { version, chunks };
 }
 
-// Rows for one chunk of the current version, or "stale" when the caller's
-// version is no longer current (the page then reloads its manifest rather
-// than mixing chunks from two versions). A failed read throws, so it is
-// never cached as an empty chunk.
-export async function getQuestionsChunk(chunk: number, requestedVersion: string): Promise<Q[] | "stale" | "missing"> {
-  const { version, chunks, edges } = await getBounds();
-  if (requestedVersion !== version) return "stale";
-  if (!Number.isInteger(chunk) || chunk < 0 || chunk >= chunks) return "missing";
-  const hi = chunk === 0 ? null : edges[chunk - 1];          // inclusive
-  const lo = chunk === chunks - 1 ? null : edges[chunk];     // exclusive
-  return unstable_cache(async () => {
-    const sb = supabaseAdmin();
-    const rows: Q[] = [];
-    // Keyset paging inside the chunk: each request continues below the last
-    // id seen, so nothing shifts between requests.
-    let below: number | null = null;
-    for (;;) {
-      let q = sb.from("questions").select(COLS).order("id", { ascending: false }).limit(REQUEST_ROWS);
-      if (hi !== null) q = q.lte("id", hi);
-      if (lo !== null) q = q.gt("id", lo);
-      if (below !== null) q = q.lt("id", below);
-      const { data, error } = await q;
-      if (error) throw new Error(`questions chunk ${chunk} failed: ${error.message}`);
-      const page = (data as unknown as Q[]) || [];
-      rows.push(...page);
-      if (page.length < REQUEST_ROWS) break;
-      below = page[page.length - 1].id;
-    }
-    return rows;
-  }, ["questions-chunk", version, String(chunk)], { revalidate: 86_400, tags: ["questions"] })();
-}
+export type ChunkResult =
+  | { kind: "rows"; rows: Q[]; maxAge: number }
+  | { kind: "stale"; manifest: QuestionsManifest }
+  | { kind: "missing" };
 
-// For Admin edits that change what learners see (topic fixes, topic renames
-// and deletes): move the stamp so browsers fetch fresh chunks right away
-// instead of keeping the old ones for up to a day.
-export async function bumpQuestionsVersion() {
-  const { error } = await supabaseAdmin().from("cache_versions")
-    .upsert({ name: "questions", updated_at: new Date().toISOString() }, { onConflict: "name" });
-  if (error) {
-    // e.g. supabase/add_cache_versions.sql not run yet. The server cache is
-    // still cleared below, but browsers keep their chunks for up to a day.
-    console.error("cache_versions bump failed; learners may see the old topic for up to a day:", error.message);
+// Concurrent cold requests for the same chunk on one server instance share
+// one Supabase read instead of each doing their own.
+const inflight = new Map<string, Promise<Q[]>>();
+
+// Rows for one chunk of the current version. If the caller's version is no
+// longer current, returns the current manifest instead, so the page can
+// switch to it rather than mixing chunks from two versions. A failed read
+// throws, so it is never cached as an empty chunk.
+export async function getQuestionsChunk(chunk: number, requestedVersion: string): Promise<ChunkResult> {
+  const { version, chunks, edges, exact } = await getBounds();
+  if (requestedVersion !== version) return { kind: "stale", manifest: { version, chunks } };
+  if (!Number.isInteger(chunk) || chunk < 0 || chunk >= chunks) return { kind: "missing" };
+
+  const key = `${version}:${chunk}`;
+  let p = inflight.get(key);
+  if (!p) {
+    const hi = chunk === 0 ? null : edges[chunk - 1];          // inclusive
+    const lo = chunk === chunks - 1 ? null : edges[chunk];     // exclusive
+    p = unstable_cache(() => readRange(chunk, hi, lo), ["questions-chunk", version, String(chunk)], { revalidate: 86_400 })()
+      .finally(() => inflight.delete(key));
+    inflight.set(key, p);
   }
-  revalidateTag("questions");
+  return { kind: "rows", rows: await p, maxAge: exact ? EXACT_MAX_AGE : FALLBACK_MAX_AGE };
+}
+
+async function readRange(chunk: number, hi: number | null, lo: number | null): Promise<Q[]> {
+  const sb = supabaseAdmin();
+  const rows: Q[] = [];
+  // Keyset paging inside the chunk: each request continues below the last
+  // id seen, so nothing shifts between requests.
+  let below: number | null = null;
+  for (;;) {
+    let q = sb.from("questions").select(COLS).order("id", { ascending: false }).limit(REQUEST_ROWS);
+    if (hi !== null) q = q.lte("id", hi);
+    if (lo !== null) q = q.gt("id", lo);
+    if (below !== null) q = q.lt("id", below);
+    const { data, error } = await q;
+    if (error) throw new Error(`questions chunk ${chunk} failed: ${error.message}`);
+    const page = (data as unknown as Q[]) || [];
+    rows.push(...page);
+    if (page.length < REQUEST_ROWS) break;
+    below = page[page.length - 1].id;
+  }
+  // Over 2 MB, Next silently stops caching this chunk on the server (browsers
+  // still keep it). Shout well before that so ROWS_PER_CHUNK can be lowered.
+  const bytes = JSON.stringify(rows).length;
+  if (bytes > SIZE_WARN_BYTES) {
+    console.warn(`questions chunk ${chunk} is ${(bytes / 1e6).toFixed(2)} MB (${rows.length} rows); lower ROWS_PER_CHUNK in lib/questions-chunks.ts before it passes Next's 2 MB cache limit`);
+  }
+  return rows;
 }

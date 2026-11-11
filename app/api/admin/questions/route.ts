@@ -1,7 +1,6 @@
 import { NextResponse } from "next/server";
 import { requireAdmin } from "@/lib/admin";
 import { supabaseAdmin } from "@/lib/supabase-server";
-import { bumpQuestionsVersion } from "@/lib/questions-chunks";
 
 // Table has 10k+ rows — never list it wholesale. Two modes:
 //  - `q` (keyword search): up to 50 matches by id, company, role, or
@@ -85,6 +84,5 @@ export async function POST(req: Request) {
 
   const { error } = await admin.from("questions").update({ topic_ai, topic_ai_manual: true }).eq("id", id);
   if (error) return NextResponse.json({ ok: false, error: error.message }, { status: 400 });
-  await bumpQuestionsVersion();  // learners' cached question chunks pick up the fix now
   return NextResponse.json({ ok: true });
 }
