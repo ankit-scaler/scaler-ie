@@ -26,6 +26,31 @@ const MAIN_TABS: { href: string; label: string; icon: keyof typeof ICON }[] = [
 ];
 const CORTEX_URL = "https://cortex-by-scaler.up.railway.app/login";
 
+// Admin check once per visit, not on every page load: each check is a Vercel
+// function call. The answer is kept for this tab's session (sessionStorage),
+// keyed by email so switching accounts re-checks. Only a definite yes/no
+// (200 or 401/403) is kept; a network or server error is retried next time.
+// Someone made admin mid-visit sees the admin links after opening a new tab.
+let adminCheck: { email: string; p: Promise<boolean> } | null = null;
+function isAdminOnce(email: string): Promise<boolean> {
+  const key = `vault-admin:${email.toLowerCase()}`;
+  try {
+    const kept = sessionStorage.getItem(key);
+    if (kept === "1" || kept === "0") return Promise.resolve(kept === "1");
+  } catch {}
+  if (adminCheck?.email === email) return adminCheck.p;  // getUser and onAuthStateChange both fire on load
+  const p = fetch("/api/admin/stats?check=1")
+    .then(r => {
+      if (r.ok || r.status === 401 || r.status === 403) {
+        try { sessionStorage.setItem(key, r.ok ? "1" : "0"); } catch {}
+      } else adminCheck = null;
+      return r.ok;
+    })
+    .catch(() => { adminCheck = null; return false; });
+  adminCheck = { email, p };
+  return p;
+}
+
 export default function Header() {
   const [email, setEmail]   = useState<string | null>(null);
   const [isAdmin, setAdmin] = useState(false);
@@ -46,8 +71,7 @@ export default function Header() {
     const applyUser = async (e: string | null) => {
       setEmail(e);
       if (e) {
-        const r = await fetch("/api/admin/stats?check=1");
-        setAdmin(r.ok);
+        setAdmin(await isAdminOnce(e));
       } else {
         setAdmin(false);
       }

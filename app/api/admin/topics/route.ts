@@ -1,6 +1,7 @@
 import { NextResponse } from "next/server";
 import { requireAdmin } from "@/lib/admin";
 import { supabaseAdmin } from "@/lib/supabase-server";
+import { bumpQuestionsVersion } from "@/lib/questions-chunks";
 
 // The canonical AI-topic taxonomy now lives in the canonical_topics table
 // (see supabase/add_canonical_topics.sql), not a hardcoded list — this is
@@ -64,6 +65,7 @@ export async function PATCH(req: Request) {
   // topic_ai can never end up holding a name this table no longer has.
   const { error } = await admin.rpc("rename_canonical_topic", { old_name: oldName, new_name: newName });
   if (error) return NextResponse.json({ ok: false, error: error.message }, { status: 400 });
+  await bumpQuestionsVersion();  // questions carry the topic name; refresh learners' cached chunks
   return NextResponse.json({ ok: true });
 }
 
@@ -79,5 +81,6 @@ export async function DELETE(req: Request) {
   // a question's topic" rather than the delete silently orphaning them.
   const { error } = await admin.rpc("delete_canonical_topic", { topic_name: name });
   if (error) return NextResponse.json({ ok: false, error: error.message }, { status: 400 });
+  await bumpQuestionsVersion();  // questions carry the topic name; refresh learners' cached chunks
   return NextResponse.json({ ok: true });
 }
