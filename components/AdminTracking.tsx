@@ -45,15 +45,6 @@ function istDateStr(input: string | number | Date): string {
 const todayStr = () => istDateStr(new Date());
 const daysAgoStr = (n: number) => istDateStr(Date.now() - n * 86400_000);
 
-function formatDuration(totalMinutes: number) {
-  if (totalMinutes < 60) return `${totalMinutes}m`;
-  const days  = Math.floor(totalMinutes / 1440);
-  const hours = Math.floor((totalMinutes % 1440) / 60);
-  const mins  = totalMinutes % 60;
-  if (days > 0) return hours > 0 ? `${days}d ${hours}h` : `${days}d`;
-  return mins > 0 ? `${hours}h ${mins}m` : `${hours}h`;
-}
-
 function csvEscape(v: unknown) {
   const s = String(v ?? "");
   return /[",\n]/.test(s) ? `"${s.replace(/"/g, '""')}"` : s;
@@ -176,7 +167,7 @@ function buildLearnerTimeline(data: Stats, email: string): TimelineRow[] {
   const e = email.trim().toLowerCase();
   const rows: TimelineRow[] = [];
   data.sessions.filter(s => s.user_email.toLowerCase() === e).forEach(s =>
-    rows.push({ when: s.started_at, type: "Session", detail: `Active ~${Math.round((s.duration_sec || 0) / 60)}m` }));
+    rows.push({ when: s.started_at, type: "Session", detail: "Opened app" }));
   data.views.filter(v => v.user_email.toLowerCase() === e).forEach(v => {
     if (isSearchView(v)) {
       rows.push({ when: v.created_at, type: "Search", detail: [v.program, v.company, v.role, v.topic].filter(Boolean).join(" · ") });
@@ -199,21 +190,20 @@ function buildLearnerTimeline(data: Stats, email: string): TimelineRow[] {
   return rows.sort((a, b) => b.when.localeCompare(a.when));
 }
 function buildPerUser(views: Stats["views"], sessions: Stats["sessions"]) {
-  const m = new Map<string, { views: number; minutes: number; last: string }>();
+  const m = new Map<string, { views: number; last: string }>();
   views.forEach(v => {
-    const e = m.get(v.user_email) || { views: 0, minutes: 0, last: v.created_at };
+    const e = m.get(v.user_email) || { views: 0, last: v.created_at };
     e.views++;
     if (v.created_at > e.last) e.last = v.created_at;
     m.set(v.user_email, e);
   });
   sessions.forEach(s => {
-    const e = m.get(s.user_email) || { views: 0, minutes: 0, last: s.started_at };
-    e.minutes += (s.duration_sec || 0) / 60;
+    const e = m.get(s.user_email) || { views: 0, last: s.started_at };
     if (s.started_at > e.last) e.last = s.started_at;
     m.set(s.user_email, e);
   });
   return Array.from(m.entries())
-    .map(([email, e]) => ({ email, views: e.views, minutes: Math.round(e.minutes), last: e.last }))
+    .map(([email, e]) => ({ email, views: e.views, last: e.last }))
     .sort((a, b) => b.views - a.views);
 }
 function buildPacketPerUser(packetViews: Stats["packetViews"]) {
@@ -576,15 +566,14 @@ export default function AdminTracking() {
       return {
         email,
         views: u?.views ?? 0,
-        minutes: u?.minutes ?? 0,
         packetsRead: p?.packetsRead ?? 0,
         last: last ? new Date(last).toLocaleString() : "",
       };
     }).sort((a, b) => a.email.localeCompare(b.email));
 
     const rows: (string | number)[][] = [
-      ["Email", "Views", "Minutes", "Packets Read", "Last Activity"],
-      ...byEmail.map(u => [u.email, u.views, u.minutes, u.packetsRead, u.last]),
+      ["Email", "Views", "Packets Read", "Last Activity"],
+      ...byEmail.map(u => [u.email, u.views, u.packetsRead, u.last]),
     ];
     downloadCsv(`admin-usage-${from}_to_${to}.csv`, rows);
   };
@@ -1176,14 +1165,13 @@ export default function AdminTracking() {
         <div className="overflow-x-auto">
           <table className="w-full text-sm">
             <thead className="text-left font-mono text-[11px] uppercase tracking-widest text-mute">
-              <tr><th className="py-2">Email</th><th className="py-2">Views</th><th className="py-2">Time on site</th><th className="py-2">Last seen</th></tr>
+              <tr><th className="py-2">Email</th><th className="py-2">Views</th><th className="py-2">Last seen</th></tr>
             </thead>
             <tbody className="divide-y divide-edge/60">
               {perUser.map(u => (
                 <tr key={u.email}>
                   <td className="py-2">{u.email}</td>
                   <td className="py-2 font-mono text-xs">{u.views}</td>
-                  <td className="py-2 font-mono text-xs">{formatDuration(u.minutes)}</td>
                   <td className="py-2 font-mono text-xs text-mute">{new Date(u.last).toLocaleString()}</td>
                 </tr>
               ))}

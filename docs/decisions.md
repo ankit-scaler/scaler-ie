@@ -28,3 +28,15 @@
 - Why 1440px not 1280px: estimated full-nav width is ~1380px; a lower breakpoint would clip. Unmeasured — verify in browser; lower the `min-[1440px]` in Header.tsx if it fits sooner.
 - Rejected: directions B (dense grid) and C (glass/glow); icons-only and wrap-to-two-rows nav.
 - Not changed: Filters, Jobs and Company Packets cards (follow-up for consistency).
+
+## 2026-11-11: Heartbeat throttled to protect Vercel free-tier Active CPU
+- Decision: components/Heartbeat.tsx beats only while the tab is visible, every 90s (was 30s, even when hidden), with a 20s minimum gap.
+- Reason: Vercel emailed 90% of the 4h Fluid Active CPU free tier (team-wide, resets monthly); every beat is a function call. Hidden tabs left open were beating all day.
+- Effect to expect: far fewer /api/heartbeat calls; session "duration/minutes" metrics no longer include time in hidden tabs (arguably more accurate), 90s granularity.
+- Not done (candidates): admin stats row cap, Questions page payload.
+
+## 2026-11-11: Heartbeat timer removed; visit ping only; time tracking dropped
+- Decision: components/Heartbeat.tsx no longer repeats. One ping when a tab is visible, and again only on becoming visible after >5 min (server session window). Background tabs send nothing. Removed all time/minutes/duration displays from the Tracking page, its CSV, and the tracking-sheet subsheets (Usage Summary, Daily Visits).
+- Reason: Vercel 90% free-tier Fluid Active CPU warning; the timer was the biggest recurring invocation source. sessions rows are still needed for Daily Visits, Slack digest and unique visitors, so visits are still recorded.
+- Rejected: removing /api/heartbeat entirely (would stop sessions data).
+- /api/heartbeat route unchanged; duration_sec now ~0 and ignored.
