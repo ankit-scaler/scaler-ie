@@ -147,7 +147,7 @@ export default function JobsView({ initial }: { initial: Job[] }) {
             These jobs are sourced from external hiring platforms and not directly linked with Scaler Careerhub.
           </p>
         </div>
-        <RequestPacketButton />
+        <RequestPacketButton source="Open Hirings" />
       </section>
 
       <section className="flex flex-wrap gap-3">
