@@ -21,7 +21,9 @@ export async function GET(req: Request, { params }: { params: { chunk: string } 
       return NextResponse.json({ stale: true, ...res.manifest }, { status: 409, headers: { "Cache-Control": "no-store" } });
     }
     if (res.kind === "missing") return NextResponse.json({ error: "No such chunk." }, { status: 404 });
-    return NextResponse.json(res.rows, { headers: { "Cache-Control": `private, max-age=${res.maxAge}` } });
+    return new Response(res.json, {
+      headers: { "Content-Type": "application/json", "Cache-Control": `private, max-age=${res.maxAge}` },
+    });
   } catch (e) {
     console.error(e);
     return NextResponse.json({ error: "Couldn't load questions. Try again." }, { status: 503, headers: { "Cache-Control": "no-store" } });
