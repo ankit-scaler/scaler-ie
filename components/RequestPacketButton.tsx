@@ -7,24 +7,30 @@ type PacketOption = { company: string; role: string };
 
 const EMPTY_FORM = { company: "", role: "", jd: "", interviewDate: "", contactNumber: "" };
 
-export default function RequestPacketButton() {
+// `options`: the page's own company/role list, when it already has one (the
+// Packets page does), so the form doesn't fetch it again. `source` says which
+// page the request came from, for the team's Slack message.
+export default function RequestPacketButton({ options: given, source }: { options?: PacketOption[]; source?: string } = {}) {
   const [open, setOpen] = useState(false);
   const [form, setForm] = useState(EMPTY_FORM);
   const [submitting, setSubmitting] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [result, setResult] = useState<Result>(null);
-  const [options, setOptions] = useState<PacketOption[]>([]);
+  const [fetched, setFetched] = useState<PacketOption[] | null>(null);
+  const options = given ?? fetched ?? [];
 
-  // Loaded once, used to drive the Company/Role datalists — existing names
-  // to pick from (so a selection is guaranteed to exact-match in the
-  // backend's lookup), but a learner can still type something new if
-  // there's no entry for it yet.
+  // Drives the Company/Role datalists — existing names to pick from (so a
+  // selection is guaranteed to exact-match in the backend's lookup), but a
+  // learner can still type something new if there's no entry for it yet.
+  // Loaded the first time the form opens, not on every page visit: each
+  // fetch is a Vercel function call plus a packet-database query.
   useEffect(() => {
+    if (!open || given || fetched) return;
     fetch("/api/packet-options")
       .then(res => res.json())
-      .then(j => { if (j.ok) setOptions(j.options); })
+      .then(j => { if (j.ok) setFetched(j.options); })
       .catch(() => {});
-  }, []);
+  }, [open, given, fetched]);
 
   const companies = useMemo(
     () => Array.from(new Set(options.map(o => o.company))).sort(),
@@ -71,7 +77,7 @@ export default function RequestPacketButton() {
       const res = await fetch("/api/request-packet", {
         method: "POST",
         headers: { "content-type": "application/json" },
-        body: JSON.stringify(form),
+        body: JSON.stringify({ ...form, source }),
       });
       const j = await res.json().catch(() => ({ ok: false }));
       if (!j.ok) {
