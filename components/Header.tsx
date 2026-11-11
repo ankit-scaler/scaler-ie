@@ -28,8 +28,9 @@ const CORTEX_URL = "https://cortex-by-scaler.up.railway.app/login";
 
 // Admin check once per visit, not on every page load: each check is a Vercel
 // function call. The answer is kept for this tab's session (sessionStorage),
-// keyed by email so switching accounts re-checks. Only a definite yes/no
-// (200 or 401/403) is kept; a network or server error is retried next time.
+// keyed by email so switching accounts re-checks. Only a definite yes (200)
+// or no (403) is kept; a 401 (e.g. a token mid-refresh), a network or a
+// server error is retried on the next page load.
 // Someone made admin mid-visit sees the admin links after opening a new tab.
 let adminCheck: { email: string; p: Promise<boolean> } | null = null;
 function isAdminOnce(email: string): Promise<boolean> {
@@ -41,7 +42,7 @@ function isAdminOnce(email: string): Promise<boolean> {
   if (adminCheck?.email === email) return adminCheck.p;  // getUser and onAuthStateChange both fire on load
   const p = fetch("/api/admin/stats?check=1")
     .then(r => {
-      if (r.ok || r.status === 401 || r.status === 403) {
+      if (r.ok || r.status === 403) {
         try { sessionStorage.setItem(key, r.ok ? "1" : "0"); } catch {}
       } else adminCheck = null;
       return r.ok;

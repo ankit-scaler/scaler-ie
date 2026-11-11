@@ -313,11 +313,11 @@ create policy "own sessions rw" on sessions   for all
 create policy "admins read self" on admins for select using (auth.jwt() ->> 'email' = email);
 
 -- When each cached dataset last changed (see supabase/add_cache_versions.sql
--- and lib/cached-table.ts). Service role only: RLS on, no policies.
+-- and lib/questions-chunks.ts). Service role only: RLS on, no policies.
 create table if not exists cache_versions (
   name       text primary key,
   updated_at timestamptz not null default now()
 );
-insert into cache_versions (name) values ('questions'), ('assignments'), ('jobs')
+insert into cache_versions (name) values ('questions')
   on conflict (name) do nothing;
 alter table cache_versions enable row level security;

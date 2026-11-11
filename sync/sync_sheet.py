@@ -149,10 +149,11 @@ def get_col(row, name):
 
 def bump_cache_versions(supa, names):
     """Tell the website its cached copy of these datasets is out of date
-    (see lib/cached-table.ts): pages keep a day-long cache keyed on these
-    stamps, so moving them is what makes tonight's data show up. Never fails
-    the sync — if the cache_versions table isn't there yet, the site just
-    falls back to an hourly cache."""
+    (see lib/questions-chunks.ts): learners' browsers keep question chunks
+    for up to a day, keyed on this stamp plus the row count and newest id,
+    so moving it is what makes in-place changes (like new AI topics) show up
+    at once. Never fails the sync — if the cache_versions table isn't there
+    yet, the count and newest id still change the version."""
     now = datetime.utcnow().isoformat() + "Z"
     try:
         supa.table("cache_versions").upsert([{"name": n, "updated_at": now} for n in names], on_conflict="name").execute()
@@ -582,6 +583,11 @@ def main():
     except Exception as e:
         print(f"topic classification error: {e}", file=sys.stderr)
 
+    # Only reached when the questions upsert (and hard-refresh delete) above
+    # succeeded — they raise otherwise. The website also keys its cache on
+    # row count + newest id, so a crash before this still changes the version.
+    bump_cache_versions(supa, ["questions"])
+
     # --- Assignments ---
     try:
         ws = gs_retry(sh.worksheet, ASSIGNMENT_TAB)
@@ -676,8 +682,6 @@ def main():
                 delete_stale(supa, "assignments", {r["fingerprint"] for r in a_rows}, only_where_null="added_by")
     except Exception as e:
         print(f"assignments error: {e}", file=sys.stderr)
-
-    bump_cache_versions(supa, ["questions", "assignments"])
 
     # --- Tracking insights -> subsheets (Sheet <- Supabase, opposite direction) ---
     try:

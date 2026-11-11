@@ -14,6 +14,9 @@ export default async function Home() {
   const { data: { user } } = await sb.auth.getUser();
   if (!user) redirect("/login");
 
-  const { version, chunks } = await getQuestionsManifest();
+  // If Supabase can't be reached, the loader shows "Try again" instead of
+  // the page crashing.
+  const { version, chunks } = await getQuestionsManifest()
+    .catch(e => { console.error(e); return { version: "", chunks: 0 }; });
   return <QuestionsLoader version={version} chunks={chunks} />;
 }
