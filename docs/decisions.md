@@ -46,3 +46,10 @@
 - Reason: Typeform is now the team's request channel; JD/date/contact are collected there.
 - Rejected: auto-opening the tab after the async check (popup blockers); keeping Slack/DB logging alongside (learner would fill details twice).
 - Left in place, now unused: packet_requests table, SLACK_PACKET_REQUESTS_WEBHOOK_URL env var. Typeform hidden-field prefill (company/role) not added.
+
+## 2026-11-12: Tracking numbers computed in SQL; raw reads paginated; loader/race fixes
+- Problem: /api/admin/stats pulled raw rows with .limit(20000), but Supabase caps a request at ~1000 rows. 7d (~3k sessions) and 30d (7,158 sessions) were silently truncated in arbitrary order, so 7d and 30d charts disagreed (e.g. 11-10 = 0 vs ~50). Query errors also became zeros (`data || []`).
+- Decision: (1) new SQL function admin_daily_activity (supabase/add_admin_daily_activity.sql) returns one row per IST day; charts and all stat tiles use it. (2) Raw rows for tables/CSV/learner lookup are read in pages of 1000 by id with dedupe; failures or a 50k safety cap surface as warnings in the UI. (3) Page ignores out-of-order responses, dims stale data with a loader, disables range buttons while loading. (4) Charts use straight lines.
+- Rejected: separate daily_visits table (extra write per ping = more Vercel CPU, needs backfill, only covers one chart); pagination only (every 30d load would pull thousands of rows).
+- If the migration hasn't been run: charts fall back to counting loaded rows and a warning says to run it.
+- Audit: no other user-facing query hits the cap (other tables are small; sheet sync and Slack digest already page).
