@@ -40,3 +40,9 @@
 - Reason: Vercel 90% free-tier Fluid Active CPU warning; the timer was the biggest recurring invocation source. sessions rows are still needed for Daily Visits, Slack digest and unique visitors, so visits are still recorded.
 - Rejected: removing /api/heartbeat entirely (would stop sessions data).
 - /api/heartbeat route unchanged; duration_sec now ~0 and ignored.
+
+## 2026-11-12: Request Packet no-match now goes to a Typeform
+- Decision: the Request Packet modal asks only Company + Role. Match -> show packet link (unchanged). No match -> "Open request form" button linking to https://interviewbit.typeform.com/to/EoyLKy6w (new tab). /api/request-packet no longer posts to Slack or inserts into packet_requests.
+- Reason: Typeform is now the team's request channel; JD/date/contact are collected there.
+- Rejected: auto-opening the tab after the async check (popup blockers); keeping Slack/DB logging alongside (learner would fill details twice).
+- Left in place, now unused: packet_requests table, SLACK_PACKET_REQUESTS_WEBHOOK_URL env var. Typeform hidden-field prefill (company/role) not added.
