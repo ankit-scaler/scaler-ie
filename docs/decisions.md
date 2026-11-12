@@ -47,3 +47,9 @@
 - Rejected: a stamp table moved by the sync and Admin (missed edits made straight in Supabase, sync crashes, and needed error handling at every writer); `immutable`/1-year browser caching (stale if the version ever failed to move); row-offset chunks (rows shift when the sync inserts/deletes mid-read); per-programme files (default view is "All", and Vercel's ~4.5 MB response limit).
 - Tradeoff: Questions is no longer server-rendered. A cold first visit shows a spinner while chunks load; repeat visits read from browser cache or memory. See PR #8 for the local measurements.
 - Also: Header asks /api/admin/stats?check=1 once per tab session (a no expires after 10 min) instead of twice per page load.
+
+## 2026-11-12: Request Packet no-match now goes to a Typeform
+- Decision: the Request Packet modal asks only Company + Role. Match -> show packet link (unchanged). No match -> "Open request form" button linking to https://interviewbit.typeform.com/to/EoyLKy6w (new tab). /api/request-packet no longer posts to Slack or inserts into packet_requests.
+- Reason: Typeform is now the team's request channel; JD/date/contact are collected there.
+- Rejected: auto-opening the tab after the async check (popup blockers); keeping Slack/DB logging alongside (learner would fill details twice).
+- Left in place, now unused: packet_requests table, SLACK_PACKET_REQUESTS_WEBHOOK_URL env var. Typeform hidden-field prefill (company/role) not added.
