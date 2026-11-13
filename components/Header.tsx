@@ -127,10 +127,6 @@ export default function Header() {
         <LoadingLink href="/" className="flex shrink-0 items-center gap-2 transition-opacity duration-200 hover:opacity-80">
           <ScalerLogo className="h-6 w-auto text-text" />
           <span className="hidden font-display text-xl leading-none sm:inline">Interview Vault</span>
-          <span className="relative hidden h-2 w-2 sm:inline-flex" title="Live">
-            <span className="absolute inline-flex h-full w-full animate-ping rounded-full bg-red-500 opacity-75" />
-            <span className="relative inline-flex h-2 w-2 rounded-full bg-red-500" />
-          </span>
         </LoadingLink>
         {email && (
           <>
@@ -240,7 +236,9 @@ export default function Header() {
                 )}
               </div>
             </>
-          ) : (
+          ) : path !== "/login" && (
+            // The login page has its own "Continue with Google" button —
+            // a second Sign in here would be two buttons doing one thing.
             <motion.button
               onClick={async () => {
                 const callback = new URL("/auth/callback", location.origin);
