@@ -5,7 +5,10 @@ import { createPortal } from "react-dom";
 type Result = { matched: true; link: string } | { matched: false } | null;
 type PacketOption = { company: string; role: string };
 
-const EMPTY_FORM = { company: "", role: "", jd: "", interviewDate: "", contactNumber: "" };
+const EMPTY_FORM = { company: "", role: "" };
+
+// No existing packet -> the learner requests one through this form.
+const REQUEST_FORM_URL = "https://interviewbit.typeform.com/to/EoyLKy6w";
 
 export default function RequestPacketButton() {
   const [open, setOpen] = useState(false);
@@ -61,8 +64,8 @@ export default function RequestPacketButton() {
   }, [open]);
 
   const submit = async () => {
-    if (!form.company.trim() || !form.role.trim() || !form.contactNumber.trim()) {
-      setError("Company, role, and contact number are required.");
+    if (!form.company.trim() || !form.role.trim()) {
+      setError("Company and role are required.");
       return;
     }
     setSubmitting(true);
@@ -130,8 +133,16 @@ export default function RequestPacketButton() {
                   </>
                 ) : (
                   <>
-                    <h2 className="mt-1 font-display text-xl leading-snug">No packet yet — we've let the team know.</h2>
-                    <p className="mt-2 text-sm text-mute">Your request (company, role, JD, and interview date) was sent to the team. We'll follow up once it's ready.</p>
+                    <h2 className="mt-1 font-display text-xl leading-snug">No packet yet for this company & role.</h2>
+                    <p className="mt-2 text-sm text-mute">Fill in the request form and the team will follow up once it's ready.</p>
+                    <a
+                      href={REQUEST_FORM_URL}
+                      target="_blank" rel="noopener noreferrer"
+                      className="mt-4 inline-flex items-center gap-2 rounded-xl bg-text px-3.5 py-2 text-sm font-medium text-ink transition hover:opacity-90"
+                    >
+                      Open request form
+                      <svg className="h-3.5 w-3.5" viewBox="0 0 20 20" fill="currentColor"><path d="M7 3h10v10h-2V6.4L4.7 16.7 3.3 15.3 13.6 5H7V3z"/></svg>
+                    </a>
                   </>
                 )}
                 <button
@@ -169,28 +180,6 @@ export default function RequestPacketButton() {
                       {roles.map(r => <option key={r} value={r} />)}
                     </datalist>
                   </div>
-                  <textarea
-                    value={form.jd}
-                    onChange={e => setForm(f => ({ ...f, jd: e.target.value }))}
-                    placeholder="Paste JD"
-                    rows={4}
-                    className="w-full resize-none rounded-xl border border-edge bg-panel2 px-3 py-2 text-sm text-text placeholder:text-mute/60 focus:border-acad focus:outline-none"
-                  />
-                  <label className="block">
-                    <span className="mb-1 block text-xs text-mute">Interview / Assessment date</span>
-                    <input
-                      type="date"
-                      value={form.interviewDate}
-                      onChange={e => setForm(f => ({ ...f, interviewDate: e.target.value }))}
-                      className="w-full rounded-xl border border-edge bg-panel2 px-3 py-2 text-sm text-text [color-scheme:inherit] focus:border-acad focus:outline-none"
-                    />
-                  </label>
-                  <input
-                    value={form.contactNumber}
-                    onChange={e => setForm(f => ({ ...f, contactNumber: e.target.value }))}
-                    placeholder="Contact number"
-                    className="w-full rounded-xl border border-edge bg-panel2 px-3 py-2 text-sm text-text placeholder:text-mute/60 focus:border-acad focus:outline-none"
-                  />
                 </div>
                 {error && <div className="mt-3 text-sm text-devops">{error}</div>}
                 <div className="mt-5 flex justify-end gap-2">

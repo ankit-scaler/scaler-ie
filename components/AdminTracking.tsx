@@ -1,5 +1,5 @@
 "use client";
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import { BarChart, Bar, XAxis, YAxis, Tooltip, ResponsiveContainer, LineChart, Line, CartesianGrid, Legend } from "recharts";
 import { FlightSpinner } from "./FlightLoader";
 import { Card, Stat, SectionLabel } from "./AdminShared";
@@ -14,6 +14,18 @@ type Stats = {
   feedback: { user_email: string; platform_rating: number; usefulness_rating: number; feedback_text: string | null; created_at: string }[];
   jobApplies: { user_email: string; job_id: number; created_at: string }[];
   companyPacketOpens: { user_email: string; slug: string; created_at: string }[];
+  // Exact per-IST-day unique counts computed in the database (null until
+  // supabase/add_admin_daily_activity.sql has been run).
+  daily?: DailyRow[] | null;
+  warnings?: string[];
+};
+
+type DailyRow = {
+  day: string;
+  active_users: number; searched_users: number; packet_users: number; video_users: number;
+  jobs_users: number; company_packets_users: number;
+  questions_visits: number; assignments_visits: number;
+  job_apply_clicks: number; company_packet_opens: number;
 };
 
 // "Unique, once a learner in a day" dedup — used for every section's "Total
@@ -45,13 +57,8 @@ function istDateStr(input: string | number | Date): string {
 const todayStr = () => istDateStr(new Date());
 const daysAgoStr = (n: number) => istDateStr(Date.now() - n * 86400_000);
 
-function formatDuration(totalMinutes: number) {
-  if (totalMinutes < 60) return `${totalMinutes}m`;
-  const days  = Math.floor(totalMinutes / 1440);
-  const hours = Math.floor((totalMinutes % 1440) / 60);
-  const mins  = totalMinutes % 60;
-  if (days > 0) return hours > 0 ? `${days}d ${hours}h` : `${days}d`;
-  return mins > 0 ? `${hours}h ${mins}m` : `${hours}h`;
+function sumDaily(daily: DailyRow[], key: Exclude<keyof DailyRow, "day">): number {
+  return daily.reduce((t, r) => t + (r[key] || 0), 0);
 }
 
 function csvEscape(v: unknown) {
@@ -176,7 +183,7 @@ function buildLearnerTimeline(data: Stats, email: string): TimelineRow[] {
   const e = email.trim().toLowerCase();
   const rows: TimelineRow[] = [];
   data.sessions.filter(s => s.user_email.toLowerCase() === e).forEach(s =>
-    rows.push({ when: s.started_at, type: "Session", detail: `Active ~${Math.round((s.duration_sec || 0) / 60)}m` }));
+    rows.push({ when: s.started_at, type: "Session", detail: "Opened app" }));
   data.views.filter(v => v.user_email.toLowerCase() === e).forEach(v => {
     if (isSearchView(v)) {
       rows.push({ when: v.created_at, type: "Search", detail: [v.program, v.company, v.role, v.topic].filter(Boolean).join(" · ") });
@@ -199,21 +206,20 @@ function buildLearnerTimeline(data: Stats, email: string): TimelineRow[] {
   return rows.sort((a, b) => b.when.localeCompare(a.when));
 }
 function buildPerUser(views: Stats["views"], sessions: Stats["sessions"]) {
-  const m = new Map<string, { views: number; minutes: number; last: string }>();
+  const m = new Map<string, { views: number; last: string }>();
   views.forEach(v => {
-    const e = m.get(v.user_email) || { views: 0, minutes: 0, last: v.created_at };
+    const e = m.get(v.user_email) || { views: 0, last: v.created_at };
     e.views++;
     if (v.created_at > e.last) e.last = v.created_at;
     m.set(v.user_email, e);
   });
   sessions.forEach(s => {
-    const e = m.get(s.user_email) || { views: 0, minutes: 0, last: s.started_at };
-    e.minutes += (s.duration_sec || 0) / 60;
+    const e = m.get(s.user_email) || { views: 0, last: s.started_at };
     if (s.started_at > e.last) e.last = s.started_at;
     m.set(s.user_email, e);
   });
   return Array.from(m.entries())
-    .map(([email, e]) => ({ email, views: e.views, minutes: Math.round(e.minutes), last: e.last }))
+    .map(([email, e]) => ({ email, views: e.views, last: e.last }))
     .sort((a, b) => b.views - a.views);
 }
 function buildPacketPerUser(packetViews: Stats["packetViews"]) {
@@ -351,7 +357,8 @@ export default function AdminTracking() {
   const [customFrom, setCustomFrom] = useState(daysAgoStr(7));
   const [customTo, setCustomTo]     = useState(todayStr());
   const [data, setData]   = useState<Stats | null>(null);
-  const [loading, setLoading]   = useState(false);
+  const [loading, setLoading]   = useState(true);
+  const [loadError, setLoadError] = useState<string | null>(null);
   const [breakdownQuery, setBreakdownQuery] = useState("");
   const [topicQuery, setTopicQuery] = useState("");
   const [packetQuery, setPacketQuery] = useState("");
@@ -360,14 +367,26 @@ export default function AdminTracking() {
   const [feedbackQuery, setFeedbackQuery] = useState("");
   const [lookupEmail, setLookupEmail] = useState("");
 
+  // Only the newest request may write state: switching 7d -> 30d quickly must
+  // never let the slower, older response overwrite the newer one.
+  const reqId = useRef(0);
   const load = async () => {
+    const id = ++reqId.current;
     setLoading(true);
-    const params = new URLSearchParams({ range });
-    if (range === "custom") { params.set("from", customFrom); params.set("to", customTo); }
-    const res = await fetch(`/api/admin/stats?${params.toString()}`);
-    const j   = await res.json();
-    setData(j.ok ? j : null);
-    setLoading(false);
+    setLoadError(null);
+    try {
+      const params = new URLSearchParams({ range });
+      if (range === "custom") { params.set("from", customFrom); params.set("to", customTo); }
+      const res = await fetch(`/api/admin/stats?${params.toString()}`);
+      const j   = await res.json().catch(() => ({ ok: false }));
+      if (id !== reqId.current) return;
+      if (j.ok) setData(j);
+      else setLoadError("Couldn't load the stats. Try again.");
+    } catch {
+      if (id === reqId.current) setLoadError("Couldn't load the stats. Try again.");
+    } finally {
+      if (id === reqId.current) setLoading(false);
+    }
   };
   useEffect(() => { load(); }, [range]);
 
@@ -405,6 +424,23 @@ export default function AdminTracking() {
       const k = istDateStr(d);
       map.set(k, { day: k.slice(5), active: new Set(), searched: new Set(), packets: new Set(), videos: new Set(), jobs: new Set(), companyPackets: new Set() });
     }
+    // Preferred: exact per-day counts from the database.
+    if (data.daily) {
+      const byDay = new Map(data.daily.map(r => [r.day, r]));
+      return Array.from(map.entries()).map(([k, b]) => {
+        const r = byDay.get(k);
+        return {
+          day: b.day,
+          activeUsers: r?.active_users ?? 0,
+          searchedUsers: r?.searched_users ?? 0,
+          packetUsers: r?.packet_users ?? 0,
+          videoUsers: r?.video_users ?? 0,
+          jobsUsers: r?.jobs_users ?? 0,
+          companyPacketsUsers: r?.company_packets_users ?? 0,
+        };
+      });
+    }
+    // Fallback (migration not run): count from the loaded rows.
     data.sessions.forEach(s => { map.get(istDateStr(s.started_at))?.active.add(s.user_email); });
     data.views.forEach(v => {
       const bucket = map.get(istDateStr(v.created_at));
@@ -516,41 +552,41 @@ export default function AdminTracking() {
   // page_views at all; opening a specific packet/video IS the visit, so
   // packetViews/videoViews rows are the visit signal directly.
   const questionsVisits = useMemo(
-    () => data ? uniqueDailyCount(data.views.filter(v => v.path === "/"), v => `${v.user_email}|${istDateStr(v.created_at)}`) : 0,
+    () => data?.daily ? sumDaily(data.daily, "questions_visits") : data ? uniqueDailyCount(data.views.filter(v => v.path === "/"), v => `${v.user_email}|${istDateStr(v.created_at)}`) : 0,
     [data]
   );
   const assignmentsVisits = useMemo(
-    () => data ? uniqueDailyCount(data.views.filter(v => v.path === "/assignments"), v => `${v.user_email}|${istDateStr(v.created_at)}`) : 0,
+    () => data?.daily ? sumDaily(data.daily, "assignments_visits") : data ? uniqueDailyCount(data.views.filter(v => v.path === "/assignments"), v => `${v.user_email}|${istDateStr(v.created_at)}`) : 0,
     [data]
   );
   const packetsVisits = useMemo(
-    () => data ? uniqueDailyCount(data.packetViews, v => `${v.user_email}|${istDateStr(v.created_at)}`) : 0,
+    () => data?.daily ? sumDaily(data.daily, "packet_users") : data ? uniqueDailyCount(data.packetViews, v => `${v.user_email}|${istDateStr(v.created_at)}`) : 0,
     [data]
   );
   const videosVisits = useMemo(
-    () => data ? uniqueDailyCount(data.videoViews, v => `${v.user_email}|${istDateStr(v.created_at)}`) : 0,
+    () => data?.daily ? sumDaily(data.daily, "video_users") : data ? uniqueDailyCount(data.videoViews, v => `${v.user_email}|${istDateStr(v.created_at)}`) : 0,
     [data]
   );
   const jobsVisits = useMemo(
-    () => data ? uniqueDailyCount(data.views.filter(v => v.path === "/jobs"), v => `${v.user_email}|${istDateStr(v.created_at)}`) : 0,
+    () => data?.daily ? sumDaily(data.daily, "jobs_users") : data ? uniqueDailyCount(data.views.filter(v => v.path === "/jobs"), v => `${v.user_email}|${istDateStr(v.created_at)}`) : 0,
     [data]
   );
   // "For one job one learner count 1 in a day" — dedup key includes job_id,
   // not just user+day, so applying to 3 different jobs in one day counts 3,
   // but re-clicking Apply on the same job twice in one day still counts 1.
   const jobApplyClicks = useMemo(
-    () => data ? uniqueDailyCount(data.jobApplies, a => `${a.user_email}|${a.job_id}|${istDateStr(a.created_at)}`) : 0,
+    () => data?.daily ? sumDaily(data.daily, "job_apply_clicks") : data ? uniqueDailyCount(data.jobApplies, a => `${a.user_email}|${a.job_id}|${istDateStr(a.created_at)}`) : 0,
     [data]
   );
   const companyPacketsVisits = useMemo(
-    () => data ? uniqueDailyCount(data.views.filter(v => v.path === "/company-packets"), v => `${v.user_email}|${istDateStr(v.created_at)}`) : 0,
+    () => data?.daily ? sumDaily(data.daily, "company_packets_users") : data ? uniqueDailyCount(data.views.filter(v => v.path === "/company-packets"), v => `${v.user_email}|${istDateStr(v.created_at)}`) : 0,
     [data]
   );
   // "Unique learners who read a packet" — same per-learner-per-item-per-day
   // dedup as job applies: reading 3 different company packets in one day
   // counts 3, re-opening the same one twice in one day counts 1.
   const companyPacketOpensUnique = useMemo(
-    () => data ? uniqueDailyCount(data.companyPacketOpens, o => `${o.user_email}|${o.slug}|${istDateStr(o.created_at)}`) : 0,
+    () => data?.daily ? sumDaily(data.daily, "company_packet_opens") : data ? uniqueDailyCount(data.companyPacketOpens, o => `${o.user_email}|${o.slug}|${istDateStr(o.created_at)}`) : 0,
     [data]
   );
 
@@ -576,15 +612,14 @@ export default function AdminTracking() {
       return {
         email,
         views: u?.views ?? 0,
-        minutes: u?.minutes ?? 0,
         packetsRead: p?.packetsRead ?? 0,
         last: last ? new Date(last).toLocaleString() : "",
       };
     }).sort((a, b) => a.email.localeCompare(b.email));
 
     const rows: (string | number)[][] = [
-      ["Email", "Views", "Minutes", "Packets Read", "Last Activity"],
-      ...byEmail.map(u => [u.email, u.views, u.minutes, u.packetsRead, u.last]),
+      ["Email", "Views", "Packets Read", "Last Activity"],
+      ...byEmail.map(u => [u.email, u.views, u.packetsRead, u.last]),
     ];
     downloadCsv(`admin-usage-${from}_to_${to}.csv`, rows);
   };
@@ -751,7 +786,9 @@ export default function AdminTracking() {
             {RANGES.map(r => (
               <button key={r.k}
                 onClick={() => setRange(r.k as any)}
-                className={`rounded-full border px-3 py-1.5 text-sm transition ${range === r.k ? "border-text bg-text text-ink" : "border-edge text-mute hover:text-text"}`}
+                disabled={loading}
+                aria-busy={loading && range === r.k}
+                className={`rounded-full border px-3 py-1.5 text-sm transition disabled:cursor-wait disabled:opacity-60 ${range === r.k ? "border-text bg-text text-ink" : "border-edge text-mute hover:text-text"}`}
               >{r.label}</button>
             ))}
           </div>
@@ -769,7 +806,8 @@ export default function AdminTracking() {
             />
             <button
               onClick={applyCustomRange}
-              className={`ml-1 rounded-full border px-3 py-1 text-sm transition ${range === "custom" ? "border-text bg-text text-ink" : "border-edge text-mute hover:text-text"}`}
+              disabled={loading}
+              className={`ml-1 rounded-full border px-3 py-1 text-sm transition disabled:cursor-wait disabled:opacity-60 ${range === "custom" ? "border-text bg-text text-ink" : "border-edge text-mute hover:text-text"}`}
             >Go</button>
           </div>
           <ExportButton
@@ -780,6 +818,25 @@ export default function AdminTracking() {
         </div>
       </section>
 
+      {loadError && (
+        <div className="flex items-center justify-between gap-3 rounded-xl border border-devops/40 bg-devops/10 px-4 py-3 text-sm text-devops">
+          <span>{loadError}</span>
+          <button onClick={load} disabled={loading} className="rounded-lg border border-devops/40 px-3 py-1 text-xs disabled:opacity-50">Retry</button>
+        </div>
+      )}
+      {data?.warnings && data.warnings.length > 0 && (
+        <div className="rounded-xl border border-acad/40 bg-acad/10 px-4 py-3 text-sm text-text">
+          <div className="mb-1 font-medium">Some numbers may be incomplete</div>
+          <ul className="list-disc pl-5 text-xs text-mute">
+            {data.warnings.map((w, i) => <li key={i}>{w}</li>)}
+          </ul>
+        </div>
+      )}
+
+      {/* Everything below re-queries on a range change: dim the old numbers
+          and block clicks until the new ones land, so stale data is never
+          mistaken for the newly selected range. */}
+      <div className={`relative space-y-10 transition-opacity ${loading ? "pointer-events-none opacity-40" : ""}`} aria-busy={loading}>
       <SectionLabel accent="acad">Overview</SectionLabel>
 
       <section className="grid grid-cols-1 gap-4 lg:grid-cols-2">
@@ -792,7 +849,7 @@ export default function AdminTracking() {
               <XAxis dataKey="day" stroke="rgb(var(--mute))" fontSize={11} />
               <YAxis stroke="rgb(var(--mute))" fontSize={11} allowDecimals={false} />
               <Tooltip contentStyle={{ background: "rgb(var(--panel))", border: "1px solid rgb(var(--edge))", borderRadius: 8, color: "rgb(var(--text))" }} />
-              <Line type="monotone" dataKey="activeUsers" name="Active users" stroke="rgb(var(--acad))" strokeWidth={2} dot={false} />
+              <Line type="linear" dataKey="activeUsers" name="Active users" stroke="rgb(var(--acad))" strokeWidth={2} dot={{ r: 2 }} />
             </LineChart>
           </ResponsiveContainer>
         </Card>
@@ -806,7 +863,7 @@ export default function AdminTracking() {
               <XAxis dataKey="day" stroke="rgb(var(--mute))" fontSize={11} />
               <YAxis stroke="rgb(var(--mute))" fontSize={11} allowDecimals={false} />
               <Tooltip contentStyle={{ background: "rgb(var(--panel))", border: "1px solid rgb(var(--edge))", borderRadius: 8, color: "rgb(var(--text))" }} />
-              <Line type="monotone" dataKey="searchedUsers" name="Searched users" stroke="rgb(var(--dsml))" strokeWidth={2} dot={false} />
+              <Line type="linear" dataKey="searchedUsers" name="Searched users" stroke="rgb(var(--dsml))" strokeWidth={2} dot={{ r: 2 }} />
             </LineChart>
           </ResponsiveContainer>
         </Card>
@@ -821,8 +878,8 @@ export default function AdminTracking() {
               <YAxis stroke="rgb(var(--mute))" fontSize={11} allowDecimals={false} />
               <Tooltip contentStyle={{ background: "rgb(var(--panel))", border: "1px solid rgb(var(--edge))", borderRadius: 8, color: "rgb(var(--text))" }} />
               <Legend wrapperStyle={{ fontSize: 12 }} />
-              <Line type="monotone" dataKey="packetUsers" name="Read a packet" stroke="rgb(var(--aiml))" strokeWidth={2} dot={false} />
-              <Line type="monotone" dataKey="videoUsers" name="Watched a video" stroke="rgb(var(--devops))" strokeWidth={2} dot={false} />
+              <Line type="linear" dataKey="packetUsers" name="Read a packet" stroke="rgb(var(--aiml))" strokeWidth={2} dot={{ r: 2 }} />
+              <Line type="linear" dataKey="videoUsers" name="Watched a video" stroke="rgb(var(--devops))" strokeWidth={2} dot={{ r: 2 }} />
             </LineChart>
           </ResponsiveContainer>
         </Card>
@@ -851,7 +908,7 @@ export default function AdminTracking() {
               <XAxis dataKey="day" stroke="rgb(var(--mute))" fontSize={11} />
               <YAxis stroke="rgb(var(--mute))" fontSize={11} allowDecimals={false} />
               <Tooltip contentStyle={{ background: "rgb(var(--panel))", border: "1px solid rgb(var(--edge))", borderRadius: 8, color: "rgb(var(--text))" }} />
-              <Line type="monotone" dataKey="jobsUsers" name="Visited Open Hirings" stroke="rgb(var(--topic))" strokeWidth={2} dot={false} />
+              <Line type="linear" dataKey="jobsUsers" name="Visited Open Hirings" stroke="rgb(var(--topic))" strokeWidth={2} dot={{ r: 2 }} />
             </LineChart>
           </ResponsiveContainer>
         </Card>
@@ -864,7 +921,7 @@ export default function AdminTracking() {
               <XAxis dataKey="day" stroke="rgb(var(--mute))" fontSize={11} />
               <YAxis stroke="rgb(var(--mute))" fontSize={11} allowDecimals={false} />
               <Tooltip contentStyle={{ background: "rgb(var(--panel))", border: "1px solid rgb(var(--edge))", borderRadius: 8, color: "rgb(var(--text))" }} />
-              <Line type="monotone" dataKey="companyPacketsUsers" name="Visited Company Packets" stroke="rgb(var(--aiml))" strokeWidth={2} dot={false} />
+              <Line type="linear" dataKey="companyPacketsUsers" name="Visited Company Packets" stroke="rgb(var(--aiml))" strokeWidth={2} dot={{ r: 2 }} />
             </LineChart>
           </ResponsiveContainer>
         </Card>
@@ -1176,14 +1233,13 @@ export default function AdminTracking() {
         <div className="overflow-x-auto">
           <table className="w-full text-sm">
             <thead className="text-left font-mono text-[11px] uppercase tracking-widest text-mute">
-              <tr><th className="py-2">Email</th><th className="py-2">Views</th><th className="py-2">Time on site</th><th className="py-2">Last seen</th></tr>
+              <tr><th className="py-2">Email</th><th className="py-2">Views</th><th className="py-2">Last seen</th></tr>
             </thead>
             <tbody className="divide-y divide-edge/60">
               {perUser.map(u => (
                 <tr key={u.email}>
                   <td className="py-2">{u.email}</td>
                   <td className="py-2 font-mono text-xs">{u.views}</td>
-                  <td className="py-2 font-mono text-xs">{formatDuration(u.minutes)}</td>
                   <td className="py-2 font-mono text-xs text-mute">{new Date(u.last).toLocaleString()}</td>
                 </tr>
               ))}
@@ -1242,10 +1298,13 @@ export default function AdminTracking() {
           </table>
         </div>
       </Card>
+      </div>
       {loading && (
-        <div className="flex flex-col items-center gap-2">
-          <FlightSpinner />
-          <span className="text-sm text-mute">Loading…</span>
+        <div className="pointer-events-none fixed inset-x-0 top-28 z-40 flex justify-center">
+          <div className="flex items-center gap-3 rounded-full border border-edge bg-panel px-4 py-2 shadow-cardH">
+            <FlightSpinner className="h-4 w-4" />
+            <span className="text-sm text-text">{data ? "Updating…" : "Loading stats…"}</span>
+          </div>
         </div>
       )}
     </div>

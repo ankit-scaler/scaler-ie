@@ -16,6 +16,7 @@ export default function PacketLinksManager() {
   const [loaded, setLoaded] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [rowNotice, setRowNotice] = useState<Record<number, string>>({});
+  const [rowInfo, setRowInfo] = useState<Record<number, string>>({});
   const [newPacket, setNewPacket] = useState(emptyDraft);
   const [adding, setAdding] = useState(false);
   const [addError, setAddError] = useState<string | null>(null);
@@ -46,12 +47,17 @@ export default function PacketLinksManager() {
   const refresh = async (id: number) => {
     setRefreshingId(id);
     setRowNotice(n => ({ ...n, [id]: "" }));
+    setRowInfo(n => ({ ...n, [id]: "" }));
     const res = await fetch("/api/admin/packets", {
       method: "POST", headers: { "content-type": "application/json" },
       body: JSON.stringify({ action: "refresh", id }),
     });
     const j = await res.json().catch(() => ({ ok: false }));
     if (!j.ok) setRowNotice(n => ({ ...n, [id]: j.error || "Refresh failed." }));
+    else if (j.docName || j.docModified) {
+      const when = j.docModified ? new Date(j.docModified).toLocaleString() : "unknown";
+      setRowInfo(n => ({ ...n, [id]: `Synced doc "${j.docName || "?"}" — last edited in Google ${when}` }));
+    }
     await load();
     setRefreshingId(null);
   };
@@ -108,6 +114,7 @@ export default function PacketLinksManager() {
           const key = `p-${p.id}`;
           const val = draft[key] ?? p.doc_link ?? "";
           const notice = rowNotice[p.id];
+          const info = rowInfo[p.id];
           return (
             <div key={p.id} className="rounded-xl border border-edge/60 bg-panel2 p-2.5">
               <div className="flex flex-wrap items-center gap-2">
@@ -141,6 +148,9 @@ export default function PacketLinksManager() {
               </div>
               {notice && (
                 <div className="mt-2 rounded-lg border border-devops/40 bg-devops/10 px-2.5 py-1.5 text-xs text-devops">{notice}</div>
+              )}
+              {info && !notice && (
+                <div className="mt-2 rounded-lg border border-edge bg-panel px-2.5 py-1.5 text-xs text-mute">{info}</div>
               )}
             </div>
           );
