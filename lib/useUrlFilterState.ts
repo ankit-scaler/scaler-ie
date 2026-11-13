@@ -2,7 +2,10 @@
 import { useEffect, useRef, useState } from "react";
 import type { FilterState } from "@/components/Filters";
 
-const KEYS = ["program", "company", "role", "round", "topic", "q"] as const;
+const STR_KEYS = ["program", "company", "topic", "q"] as const;
+// Multi-select filters: written as repeated params (?role=A&role=B), so values
+// containing commas are safe. A legacy single ?role=A still reads as ["A"].
+const LIST_KEYS = ["role", "round"] as const;
 
 // Keeps a Filters' FilterState mirrored into the URL query string (?company=
 // ...&role=...) so the exact filtered view — or a specific packet's page,
@@ -23,11 +26,15 @@ export function useUrlFilterState(defaults: FilterState) {
 
   useEffect(() => {
     const params = new URLSearchParams(window.location.search);
-    const next = { ...defaults };
+    const next: FilterState = { ...defaults };
     let changed = false;
-    for (const k of KEYS) {
+    for (const k of STR_KEYS) {
       const v = params.get(k);
-      if (v) { (next as any)[k] = v; changed = true; }
+      if (v) { next[k] = v; changed = true; }
+    }
+    for (const k of LIST_KEYS) {
+      const vs = params.getAll(k).filter(v => v && v !== "All");
+      if (vs.length) { next[k] = vs; changed = true; }
     }
     readFromUrl.current = true;
     if (changed) setState(next);
@@ -38,10 +45,11 @@ export function useUrlFilterState(defaults: FilterState) {
   useEffect(() => {
     if (!readFromUrl.current) return;
     const params = new URLSearchParams();
-    for (const k of KEYS) {
+    for (const k of STR_KEYS) {
       const v = state[k];
       if (v && v !== "All") params.set(k, v);
     }
+    for (const k of LIST_KEYS) state[k].forEach(v => params.append(k, v));
     const qs = params.toString();
     const url = qs ? `${window.location.pathname}?${qs}` : window.location.pathname;
     window.history.replaceState(null, "", url);
