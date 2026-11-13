@@ -5,6 +5,7 @@ import Footer from "@/components/Footer";
 import Heartbeat from "@/components/Heartbeat";
 import PageTransition from "@/components/PageTransition";
 import FeedbackWidget from "@/components/FeedbackWidget";
+import MotionPrefs from "@/components/MotionPrefs";
 
 export const metadata: Metadata = {
   title: "Scaler IE — Interview Questions",
@@ -32,13 +33,15 @@ export default function RootLayout({ children }: { children: React.ReactNode }) 
           <div className="absolute -top-40 left-1/2 h-[600px] w-[900px] -translate-x-1/2 rounded-full bg-acad/10 blur-[120px]" />
           <div className="absolute bottom-0 right-0 h-[400px] w-[600px] rounded-full bg-dsml/10 blur-[120px]" />
         </div>
-        <Header />
-        <Heartbeat />
-        <main className="mx-auto max-w-7xl px-4 pb-24 pt-6 sm:px-6">
-          <PageTransition>{children}</PageTransition>
-        </main>
-        <Footer />
-        <FeedbackWidget />
+        <MotionPrefs>
+          <Header />
+          <Heartbeat />
+          <main className="mx-auto max-w-7xl px-4 pb-24 pt-6 sm:px-6">
+            <PageTransition>{children}</PageTransition>
+          </main>
+          <Footer />
+          <FeedbackWidget />
+        </MotionPrefs>
       </body>
     </html>
   );
