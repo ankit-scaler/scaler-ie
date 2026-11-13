@@ -21,9 +21,14 @@ const Icon = ({ k }: { k: keyof typeof ICON }) => (
 const MAIN_TABS: { href: string; label: string; icon: keyof typeof ICON }[] = [
   { href: "/", label: "Questions", icon: "q" },
   { href: "/assignments", label: "Assignments", icon: "a" },
-  { href: "/packets", label: "Prepare for Trending roles", icon: "p" },
+  // One tab for company packets and the role × YoE guides; each page has a
+  // switch to the other (PacketsSwitch). URLs unchanged.
   { href: "/company-packets", label: "Packets", icon: "k" },
 ];
+const isTabActive = (path: string | null, href: string) =>
+  href === "/company-packets"
+    ? !!path && (path.startsWith("/company-packets") || path.startsWith("/packets"))
+    : path === href;
 const CORTEX_URL = "https://cortex-by-scaler.up.railway.app/login";
 
 export default function Header() {
@@ -95,7 +100,7 @@ export default function Header() {
 
   const tab = (href: string, label: string, opts: { external?: boolean; highlight?: boolean; icon?: keyof typeof ICON } = {}) => {
     const { external = false, highlight = false, icon } = opts;
-    const active = !external && path === href;
+    const active = !external && isTabActive(path, href);
     return (
       <LoadingLink
         href={href}
@@ -127,10 +132,6 @@ export default function Header() {
         <LoadingLink href="/" className="flex shrink-0 items-center gap-2 transition-opacity duration-200 hover:opacity-80">
           <ScalerLogo className="h-6 w-auto text-text" />
           <span className="hidden font-display text-xl leading-none sm:inline">Interview Vault</span>
-          <span className="relative hidden h-2 w-2 sm:inline-flex" title="Live">
-            <span className="absolute inline-flex h-full w-full animate-ping rounded-full bg-red-500 opacity-75" />
-            <span className="relative inline-flex h-2 w-2 rounded-full bg-red-500" />
-          </span>
         </LoadingLink>
         {email && (
           <>
@@ -159,7 +160,7 @@ export default function Header() {
                 <div role="menu" className="absolute left-0 top-full z-50 mt-2 w-72 max-w-[calc(100vw-2rem)] overflow-hidden rounded-xl border border-edge bg-panel p-1.5 shadow-card">
                   {[...MAIN_TABS, { href: "/jobs", label: "Open Hirings", icon: "j" as const }, { href: CORTEX_URL, label: "Revise with Crash Course", icon: "r" as const }].map(t => {
                     const external = t.href.startsWith("http");
-                    const active = !external && path === t.href;
+                    const active = !external && isTabActive(path, t.href);
                     return (
                       <LoadingLink
                         key={t.href}
@@ -240,7 +241,9 @@ export default function Header() {
                 )}
               </div>
             </>
-          ) : (
+          ) : path !== "/login" && (
+            // The login page has its own "Continue with Google" button —
+            // a second Sign in here would be two buttons doing one thing.
             <motion.button
               onClick={async () => {
                 const callback = new URL("/auth/callback", location.origin);

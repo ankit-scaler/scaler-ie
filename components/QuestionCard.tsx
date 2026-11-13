@@ -13,13 +13,21 @@ const TOPIC_TEXT: Record<string, string> = {
   Academy: "text-acad", DSML: "text-dsml", AIML: "text-aiml", DevOps: "text-devops", FDE: "text-topic",
 };
 
+// "2026-10-14" → "Oct 2026". Parsed as a plain date so no timezone can
+// shift it into the previous month.
+function askedLabel(iso: string): string {
+  const [y, m] = iso.split("-").map(Number);
+  const month = ["Jan", "Feb", "Mar", "Apr", "May", "Jun", "Jul", "Aug", "Sep", "Oct", "Nov", "Dec"][m - 1];
+  return month ? `${month} ${y}` : "";
+}
+
 export default function QuestionCard({
   q, index,
 }: {
   q: {
     id: number; program: string; company: string; role: string;
     round: string | null; question: string; related_topic: string | null;
-    topic_ai: string | null;
+    topic_ai: string | null; asked_on?: string | null;
   };
   index: number;
 }) {
@@ -37,7 +45,10 @@ export default function QuestionCard({
         <Monogram name={q.company} tone={TONE[prog]} />
         <div className="min-w-0">
           <div className="break-words font-display text-base font-semibold leading-tight">{q.company.trim()}</div>
-          <div className="break-words text-sm text-mute">{q.role.trim()}{q.round ? ` · ${q.round}` : ""}</div>
+          <div className="break-words text-sm text-mute">
+            {q.role.trim()}{q.round ? ` · ${q.round}` : ""}
+            {q.asked_on && askedLabel(q.asked_on) && <span className="font-mono text-xs"> · Asked {askedLabel(q.asked_on)}</span>}
+          </div>
         </div>
         <span className={`ml-auto inline-flex shrink-0 items-center gap-1.5 font-mono text-[11px] uppercase tracking-wider ${TOPIC_TEXT[prog]}`}>
           <span className={`h-1.5 w-1.5 rounded-full ${DOT[prog]}`} />{q.program}
