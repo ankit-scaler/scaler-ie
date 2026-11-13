@@ -3,6 +3,7 @@ import { unstable_cache } from "next/cache";
 import { supabaseServer } from "@/lib/supabase-server";
 import { fetchAllRows } from "@/lib/paged-fetch";
 import QuestionsView, { Q } from "@/components/QuestionsView";
+import { getPacketLinks } from "@/lib/prep-data";
 
 export const dynamic = "force-dynamic";
 
@@ -22,6 +23,6 @@ export default async function Home() {
   const { data: { user } } = await sb.auth.getUser();
   if (!user) redirect("/login");
 
-  const all = await getAllQuestions();
-  return <QuestionsView initial={all} />;
+  const [all, packets] = await Promise.all([getAllQuestions(), getPacketLinks()]);
+  return <QuestionsView initial={all} packets={packets} />;
 }
