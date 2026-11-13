@@ -311,3 +311,22 @@ create policy "own sessions rw" on sessions   for all
 
 -- Admin table: only admins can read/write (checked via service role in API)
 create policy "admins read self" on admins for select using (auth.jwt() ->> 'email' = email);
+
+-- questions.updated_at: moves when a row's content changes; the Questions
+-- page cache version is built from it (see supabase/add_questions_updated_at.sql
+-- and lib/questions-chunks.ts).
+alter table questions add column if not exists updated_at timestamptz not null default now();
+create index if not exists idx_q_updated_at on questions (updated_at desc);
+create or replace function questions_touch_updated_at()
+returns trigger language plpgsql as $$
+begin
+  if row(new.*) is distinct from row(old.*) then
+    new.updated_at := now();
+  end if;
+  return new;
+end;
+$$;
+drop trigger if exists trg_questions_updated_at on questions;
+create trigger trg_questions_updated_at
+  before update on questions
+  for each row execute function questions_touch_updated_at();

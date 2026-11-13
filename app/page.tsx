@@ -1,27 +1,22 @@
 import { redirect } from "next/navigation";
-import { unstable_cache } from "next/cache";
 import { supabaseServer } from "@/lib/supabase-server";
-import { fetchAllRows } from "@/lib/paged-fetch";
-import QuestionsView, { Q } from "@/components/QuestionsView";
+import { getQuestionsManifest } from "@/lib/questions-chunks";
+import QuestionsLoader from "@/components/QuestionsLoader";
 
 export const dynamic = "force-dynamic";
 
-// Questions data is identical for every signed-in learner (RLS just gates
-// on "authenticated", nothing per-user) and only changes on the nightly
-// sheet sync — so the ~10k-row fetch is cached for everyone instead of
-// re-querying Supabase on every single page load. The page itself stays
-// dynamic (it still checks the caller's session on every request).
-const getAllQuestions = unstable_cache(
-  () => fetchAllRows<Q>("questions", "id,program,company,role,round,question,related_topic,topic_ai"),
-  ["all-questions"],
-  { revalidate: 300 }
-);
-
+// The page only checks the session and ships a tiny manifest; the browser
+// loads the question list itself from cached chunk files (see
+// lib/questions-chunks.ts). Building all ~13k questions into this page on
+// every visit was ~100 ms of server CPU and a 5 MB response each time.
 export default async function Home() {
   const sb = supabaseServer();
   const { data: { user } } = await sb.auth.getUser();
   if (!user) redirect("/login");
 
-  const all = await getAllQuestions();
-  return <QuestionsView initial={all} />;
+  // If Supabase can't be reached, the loader shows "Try again" instead of
+  // the page crashing.
+  const { version, chunks } = await getQuestionsManifest()
+    .catch(e => { console.error(e); return { version: "", chunks: 0 }; });
+  return <QuestionsLoader version={version} chunks={chunks} />;
 }

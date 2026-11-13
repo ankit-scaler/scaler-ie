@@ -41,6 +41,13 @@
 - Rejected: removing /api/heartbeat entirely (would stop sessions data).
 - /api/heartbeat route unchanged; duration_sec now ~0 and ignored.
 
+## 2026-11-11: Questions list loaded by the browser in versioned chunks
+- Decision: app/page.tsx no longer renders all ~13k questions. It sends a manifest (version + chunk count); components/QuestionsLoader.tsx fetches `/api/questions/[chunk]?v=<version>` (2,000-row id ranges, 2 at a time) and the browser keeps each chunk (`private`, 1 day; 1 hour before the migration). Version = newest `questions.updated_at` + row count + newest id, re-checked at most once a minute; a trigger moves `updated_at` only when a row's content changes (supabase/add_questions_updated_at.sql). Server caches are keyed by version, so nothing is ever invalidated by tag. A chunk request for an old version gets 409 with the current manifest and the loader switches to it. The last list stays in memory for in-app navigation back to Questions.
+- Reason: Vercel 90% Fluid Active CPU warning. Each Questions visit rendered ~5 MB (~100 ms CPU measured locally), and Next skips data-cache entries over 2 MB, so even the Supabase read was never cached.
+- Rejected: a stamp table moved by the sync and Admin (missed edits made straight in Supabase, sync crashes, and needed error handling at every writer); `immutable`/1-year browser caching (stale if the version ever failed to move); row-offset chunks (rows shift when the sync inserts/deletes mid-read); per-programme files (default view is "All", and Vercel's ~4.5 MB response limit).
+- Tradeoff: Questions is no longer server-rendered. A cold first visit shows a spinner while chunks load; repeat visits read from browser cache or memory. See PR #8 for the local measurements.
+- Also: Header asks /api/admin/stats?check=1 once per tab session (a no expires after 10 min) instead of twice per page load.
+
 ## 2026-11-12: Request Packet no-match now goes to a Typeform
 - Decision: the Request Packet modal asks only Company + Role. Match -> show packet link (unchanged). No match -> "Open request form" button linking to https://interviewbit.typeform.com/to/EoyLKy6w (new tab). /api/request-packet no longer posts to Slack or inserts into packet_requests.
 - Reason: Typeform is now the team's request channel; JD/date/contact are collected there.
