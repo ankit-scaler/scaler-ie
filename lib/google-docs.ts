@@ -65,3 +65,14 @@ export async function fetchDocContentHtml(docUrl: string): Promise<string> {
   const res = await drive.files.export({ fileId: id, mimeType: "text/html" }, { responseType: "text" });
   return cleanDocHtml(String(res.data));
 }
+
+// Name + last-modified time of the doc as Drive sees it right now — shown
+// after "Refresh content" so an admin can tell whether the link points at the
+// doc they edited and whether Google has registered their latest edit.
+export async function fetchDocMeta(docUrl: string): Promise<{ name: string; modifiedTime: string } | null> {
+  const id = extractDocId(docUrl);
+  if (!id) return null;
+  const drive = google.drive({ version: "v3", auth: getAuth() });
+  const res = await drive.files.get({ fileId: id, fields: "name,modifiedTime" });
+  return { name: res.data.name || "", modifiedTime: res.data.modifiedTime || "" };
+}
