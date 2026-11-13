@@ -1,7 +1,7 @@
 name: Daily Slack Digest
+# No `schedule:` — GitHub's cron ran hours late. Supabase pg_cron job
+# `gh-daily-digest` (12:30 UTC == 18:00 IST) dispatches this workflow instead.
 on:
-  schedule:
-    - cron: '30 12 * * *'   # 12:30 UTC == 18:00 IST
   workflow_dispatch: {}
 
 jobs:

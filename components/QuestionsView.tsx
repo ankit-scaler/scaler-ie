@@ -17,7 +17,7 @@ export type Q = {
 };
 
 const PAGE = 30;
-const DEFAULT_STATE: FilterState = { program: "All", company: "All", role: "All", round: "All", topic: "All", q: "" };
+const DEFAULT_STATE: FilterState = { program: "All", company: "All", role: [], round: [], topic: "All", q: "" };
 
 const effectiveTopic = (x: Q) => (x.topic_ai || x.related_topic || "").trim();
 
@@ -35,11 +35,13 @@ export default function QuestionsView({ initial, packets = [] }: { initial: Q[];
 
   const filtered = useMemo(() => {
     const qLower = state.q.trim().toLowerCase();
+    const roleSet = new Set(state.role.map(r => r.trim()));
+    const roundSet = new Set(state.round);
     return initial.filter(x =>
       (state.program === "All" || x.program.toLowerCase() === state.program.toLowerCase()) &&
       (state.company === "All" || x.company.trim() === state.company.trim()) &&
-      (state.role === "All"    || x.role.trim()    === state.role.trim()) &&
-      (state.round === "All"   || (x.round || "")  === state.round) &&
+      (roleSet.size === 0  || roleSet.has(x.role.trim())) &&
+      (roundSet.size === 0 || roundSet.has(x.round || "")) &&
       (state.topic === "All"   || effectiveTopic(x) === state.topic) &&
       (!qLower || x.question.toLowerCase().includes(qLower) || effectiveTopic(x).toLowerCase().includes(qLower))
     );
@@ -48,8 +50,11 @@ export default function QuestionsView({ initial, packets = [] }: { initial: Q[];
   // Fire a view event when filters narrow to a specific company+role, or to
   // a topic on its own — whichever fields are actually set ride along on
   // the same row so a "Google + Arrays" search is still one event, not two.
+  // Multi-role browsing (2+ roles) isn't logged — one event per selected role
+  // would inflate the Tracking page's "searched" counts.
+  const singleRole = state.role.length === 1 ? state.role[0] : null;
   useEffect(() => {
-    const hasCompanyRole = state.company !== "All" && state.role !== "All";
+    const hasCompanyRole = state.company !== "All" && singleRole !== null;
     const hasTopic = state.topic !== "All";
     if (!hasCompanyRole && !hasTopic) return;
     fetch("/api/track", {
@@ -57,13 +62,14 @@ export default function QuestionsView({ initial, packets = [] }: { initial: Q[];
       headers: { "content-type": "application/json" },
       body: JSON.stringify({
         company: state.company !== "All" ? state.company : null,
-        role:    state.role    !== "All" ? state.role    : null,
+        role:    singleRole,
         program: state.program !== "All" ? state.program : null,
         topic:   state.topic   !== "All" ? state.topic   : null,
         path: "/",
       }),
     }).catch(() => {});
-  }, [state.company, state.role, state.program, state.topic]);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [state.company, singleRole, state.program, state.topic]);
 
   useEffect(() => setVisible(PAGE), [state]);
 
