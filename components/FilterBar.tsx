@@ -1,15 +1,19 @@
 "use client";
 import { useEffect, useMemo, useRef, useState } from "react";
-import Combobox, { ComboOption } from "./Combobox";
+import Combobox, { ComboOption, MultiCombobox } from "./Combobox";
 
+// A facet is a single pick ("All" = no filter) or, with `multi`, a list of
+// picks (empty = no filter), like Role and Round on Questions/Assignments.
 export type Facet = {
   key: string;
   label: string;
-  value: string;
   options: ComboOption[];
-  onChange: (v: string) => void;
   searchable?: boolean;
-};
+} & (
+  | { multi?: false; value: string; onChange: (v: string) => void }
+  | { multi: true; values: string[]; onChange: (v: string[]) => void }
+);
+const facetActive = (f: Facet) => (f.multi ? f.values.length > 0 : f.value !== "All");
 
 // A suggestion under the search box ("Companies", "Roles", "Topics"):
 // picking one sets that facet instead of searching the text.
@@ -36,7 +40,7 @@ export default function FilterBar({
   const [suggestOpen, setSuggestOpen] = useState(false);
   const [hi, setHi] = useState(-1);
   const boxRef = useRef<HTMLDivElement>(null);
-  const activeFacets = facets.filter(f => f.value !== "All").length;
+  const activeFacets = facets.filter(facetActive).length;
   const anyActive = activeFacets > 0 || search.trim() !== "" || (segments && segments.value !== "All");
 
   const shown = useMemo(() => {
@@ -146,7 +150,9 @@ export default function FilterBar({
           >Filters{activeFacets ? ` (${activeFacets})` : ""}</button>
         )}
         <div className={`${showFacets ? "flex" : "hidden"} w-full flex-wrap items-center gap-2 sm:flex sm:w-auto`}>
-          {facets.map(f => (
+          {facets.map(f => f.multi ? (
+            <MultiCombobox key={f.key} label={f.label} values={f.values} options={f.options} onChange={f.onChange} />
+          ) : (
             <Combobox key={f.key} label={f.label} value={f.value} options={f.options} onChange={f.onChange} searchable={f.searchable} />
           ))}
           {extra}

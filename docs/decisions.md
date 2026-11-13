@@ -28,3 +28,39 @@
 - Why 1440px not 1280px: estimated full-nav width is ~1380px; a lower breakpoint would clip. Unmeasured — verify in browser; lower the `min-[1440px]` in Header.tsx if it fits sooner.
 - Rejected: directions B (dense grid) and C (glass/glow); icons-only and wrap-to-two-rows nav.
 - Not changed: Filters, Jobs and Company Packets cards (follow-up for consistency).
+
+## 2026-11-11: Heartbeat throttled to protect Vercel free-tier Active CPU
+- Decision: components/Heartbeat.tsx beats only while the tab is visible, every 90s (was 30s, even when hidden), with a 20s minimum gap.
+- Reason: Vercel emailed 90% of the 4h Fluid Active CPU free tier (team-wide, resets monthly); every beat is a function call. Hidden tabs left open were beating all day.
+- Effect to expect: far fewer /api/heartbeat calls; session "duration/minutes" metrics no longer include time in hidden tabs (arguably more accurate), 90s granularity.
+- Not done (candidates): admin stats row cap, Questions page payload.
+
+## 2026-11-11: Heartbeat timer removed; visit ping only; time tracking dropped
+- Decision: components/Heartbeat.tsx no longer repeats. One ping when a tab is visible, and again only on becoming visible after >5 min (server session window). Background tabs send nothing. Removed all time/minutes/duration displays from the Tracking page, its CSV, and the tracking-sheet subsheets (Usage Summary, Daily Visits).
+- Reason: Vercel 90% free-tier Fluid Active CPU warning; the timer was the biggest recurring invocation source. sessions rows are still needed for Daily Visits, Slack digest and unique visitors, so visits are still recorded.
+- Rejected: removing /api/heartbeat entirely (would stop sessions data).
+- /api/heartbeat route unchanged; duration_sec now ~0 and ignored.
+
+## 2026-11-12: Request Packet no-match now goes to a Typeform
+- Decision: the Request Packet modal asks only Company + Role. Match -> show packet link (unchanged). No match -> "Open request form" button linking to https://interviewbit.typeform.com/to/EoyLKy6w (new tab). /api/request-packet no longer posts to Slack or inserts into packet_requests.
+- Reason: Typeform is now the team's request channel; JD/date/contact are collected there.
+- Rejected: auto-opening the tab after the async check (popup blockers); keeping Slack/DB logging alongside (learner would fill details twice).
+- Left in place, now unused: packet_requests table, SLACK_PACKET_REQUESTS_WEBHOOK_URL env var. Typeform hidden-field prefill (company/role) not added.
+
+## 2026-11-12: Tracking numbers computed in SQL; raw reads paginated; loader/race fixes
+- Problem: /api/admin/stats pulled raw rows with .limit(20000), but Supabase caps a request at ~1000 rows. 7d (~3k sessions) and 30d (7,158 sessions) were silently truncated in arbitrary order, so 7d and 30d charts disagreed (e.g. 11-10 = 0 vs ~50). Query errors also became zeros (`data || []`).
+- Decision: (1) new SQL function admin_daily_activity (supabase/add_admin_daily_activity.sql) returns one row per IST day; charts and all stat tiles use it. (2) Raw rows for tables/CSV/learner lookup are read in pages of 1000 by id with dedupe; failures or a 50k safety cap surface as warnings in the UI. (3) Page ignores out-of-order responses, dims stale data with a loader, disables range buttons while loading. (4) Charts use straight lines.
+- Rejected: separate daily_visits table (extra write per ping = more Vercel CPU, needs backfill, only covers one chart); pagination only (every 30d load would pull thousands of rows).
+- If the migration hasn't been run: charts fall back to counting loaded rows and a warning says to run it.
+- Audit: no other user-facing query hits the cap (other tables are small; sheet sync and Slack digest already page).
+
+## 2026-11-13: Scheduled jobs triggered by Supabase pg_cron (workflow_dispatch), not GitHub cron
+- Problem: GitHub `schedule:` runs were 7-10h late (Slack digest at 1-4 AM IST instead of 6 PM). A late digest also skipped feedback, because it only looked at the current IST day.
+- Decision: pg_cron jobs gh-daily-digest (30 12 UTC), gh-daily-sync (30 17), gh-daily-jobs-sync (0 18) call public.trigger_gh_workflow(), which POSTs workflow_dispatch to GitHub via pg_net using a fine-grained token (Actions r/w, repo scaler-ie only) kept in Supabase Vault (secret github_actions_token). The `schedule:` blocks were removed from the three workflows. Weekly cron-log-cleanup job trims cron.job_run_details to 14 days. Digest feedback window is now the rolling last 24h.
+- Rejected: porting the Python to SQL (sheet/jobs syncs need Google API/scraping anyway); Vercel Cron (Hobby only fires somewhere within the hour, costs Fluid CPU); external pinger (third-party service + token).
+- Operational notes: the token expires (set a reminder, 1 year max) - an expired token makes jobs silently not start (pg_cron still shows "succeeded"; check net._http_response for 401). If Actions is down at fire time that day's run is skipped; no retry.
+
+## 2026-11-13: Questions/Assignments Role and Round filters become searchable multi-selects
+- Decision: Role (both pages) and Round (Questions) use a new MultiSelect in components/Filters.tsx: search box, checkbox list, "Select all N" (adds all options matching the search), Clear. FilterState.role/round are string[] (empty = All). URL uses repeated params (?role=A&role=B); legacy ?role=A still loads. Cascade kept: roles scoped by company, rounds by company + selected roles; removing a role drops rounds that no longer apply. Company and Topic stay single-select.
+- Tracking: /api/track search events fire only when exactly one role is selected, so multi-role browsing doesn't inflate "searched" counts.
+- Rejected: one tracking event per selected role (inflates counts); comma-joined URL param (role names can contain commas); applying to Company/Topic (not requested).

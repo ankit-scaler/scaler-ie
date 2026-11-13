@@ -288,25 +288,24 @@ def _fmt_ts(ts):
 def build_usage_summary(views, sessions, packet_views):
     m = {}
     def touch(email, ts):
-        e = m.setdefault(email, {"views": 0, "minutes": 0.0, "packetsRead": 0, "last": ts})
+        e = m.setdefault(email, {"views": 0, "packetsRead": 0, "last": ts})
         if ts > e["last"]: e["last"] = ts
         return e
     for v in views: touch(v["user_email"], v["created_at"])["views"] += 1
-    for s in sessions: touch(s["user_email"], s["started_at"])["minutes"] += (s["duration_sec"] or 0) / 60
+    for s in sessions: touch(s["user_email"], s["started_at"])
     for p in packet_views: touch(p["user_email"], p["created_at"])["packetsRead"] += 1
-    rows = [["Email", "Views", "Minutes", "Packets Read", "Last Activity"]]
+    rows = [["Email", "Views", "Packets Read", "Last Activity"]]
     for email in sorted(m):
         e = m[email]
-        rows.append([email, e["views"], round(e["minutes"]), e["packetsRead"], _fmt_ts(e["last"])])
+        rows.append([email, e["views"], e["packetsRead"], _fmt_ts(e["last"])])
     return rows
 
 def build_daily_visits(sessions):
-    rows = [["Email", "Date", "Time", "Duration (min)", "Last Seen"]]
+    rows = [["Email", "Date", "Time"]]
     for s in sorted(sessions, key=lambda r: r["started_at"], reverse=True):
         started = s["started_at"] or ""
         date, time = (started[:10], started[11:19]) if started else ("", "")
-        minutes = round((s["duration_sec"] or 0) / 60)
-        rows.append([s["user_email"], date, time, minutes, _fmt_ts(s.get("last_beat_at"))])
+        rows.append([s["user_email"], date, time])
     return rows
 
 def build_topic_breakdown(views):
@@ -456,7 +455,7 @@ def sync_tracking_to_sheet(gc, supa):
 
     for window_label, since in (("All time", None), ("Last 30d", thirty_days_ago)):
         views             = select_paged(supa, "page_views", "user_email,company,role,program,topic,created_at", since, "created_at")
-        sessions          = select_paged(supa, "sessions", "user_email,duration_sec,started_at,last_beat_at", since, "started_at")
+        sessions          = select_paged(supa, "sessions", "user_email,started_at", since, "started_at")
         packet_views      = select_paged(supa, "packet_views", "user_email,created_at,packets(role,yoe)", since, "created_at")
         assignment_views  = select_paged(supa, "assignment_views", "user_email,created_at,assignments(program,company,role,round)", since, "created_at")
         video_views       = select_paged(supa, "video_resource_views", "user_email,created_at,video_resources(topic,packets(role,yoe))", since, "created_at")
