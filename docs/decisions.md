@@ -53,3 +53,9 @@
 - Rejected: separate daily_visits table (extra write per ping = more Vercel CPU, needs backfill, only covers one chart); pagination only (every 30d load would pull thousands of rows).
 - If the migration hasn't been run: charts fall back to counting loaded rows and a warning says to run it.
 - Audit: no other user-facing query hits the cap (other tables are small; sheet sync and Slack digest already page).
+
+## 2026-11-13: Scheduled jobs triggered by Supabase pg_cron (workflow_dispatch), not GitHub cron
+- Problem: GitHub `schedule:` runs were 7-10h late (Slack digest at 1-4 AM IST instead of 6 PM). A late digest also skipped feedback, because it only looked at the current IST day.
+- Decision: pg_cron jobs gh-daily-digest (30 12 UTC), gh-daily-sync (30 17), gh-daily-jobs-sync (0 18) call public.trigger_gh_workflow(), which POSTs workflow_dispatch to GitHub via pg_net using a fine-grained token (Actions r/w, repo scaler-ie only) kept in Supabase Vault (secret github_actions_token). The `schedule:` blocks were removed from the three workflows. Weekly cron-log-cleanup job trims cron.job_run_details to 14 days. Digest feedback window is now the rolling last 24h.
+- Rejected: porting the Python to SQL (sheet/jobs syncs need Google API/scraping anyway); Vercel Cron (Hobby only fires somewhere within the hour, costs Fluid CPU); external pinger (third-party service + token).
+- Operational notes: the token expires (set a reminder, 1 year max) - an expired token makes jobs silently not start (pg_cron still shows "succeeded"; check net._http_response for 401). If Actions is down at fire time that day's run is skipped; no retry.
