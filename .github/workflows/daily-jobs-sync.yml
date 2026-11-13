@@ -1,10 +1,8 @@
 name: Daily Jobs Sync
+# No `schedule:` — GitHub's cron ran hours late. Supabase pg_cron job
+# `gh-daily-jobs-sync` (18:00 UTC == 23:30 IST, 30 min after daily-sync so
+# the two don't hit Supabase at the same minute) dispatches this instead.
 on:
-  schedule:
-    # 18:00 UTC == 23:30 IST — offset 30 minutes after daily-sync.yml's
-    # 17:30 UTC run so the two cron jobs don't hit Supabase at the same
-    # minute.
-    - cron: '0 18 * * *'
   workflow_dispatch: {}
 
 jobs:

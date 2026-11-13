@@ -1,6 +1,7 @@
 """
 Daily Slack digest: unique visitors for the last 3 IST days (today so far +
-the 2 previous full days) plus today's feedback. Runs standalone at 6 PM IST
+the 2 previous full days) plus the last 24h of feedback. Runs standalone at
+6 PM IST, started by Supabase pg_cron via workflow_dispatch
 (.github/workflows/daily-digest.yml) — separate from sync_sheet.py so it
 doesn't need the Google Sheets credentials.
 
@@ -62,12 +63,12 @@ def build_message(counts, feedback, now_ist):
         suffix = " (so far)" if d == today else ""
         lines.append(f"• {d.isoformat()}{suffix}: {n} unique visitors")
     if feedback:
-        lines.append(f"*Feedback received today ({len(feedback)}):*")
+        lines.append(f"*Feedback received in the last 24h ({len(feedback)}):*")
         for f in sorted(feedback, key=lambda r: r["created_at"]):
             text = f.get("feedback_text") or "—"
             lines.append(f"• {f['user_email']} — platform {f['platform_rating']}/5, usefulness {f['usefulness_rating']}/5: {text}")
     else:
-        lines.append("_No feedback submitted today._")
+        lines.append("_No feedback submitted in the last 24h._")
     return "\n".join(lines)
 
 
@@ -82,7 +83,12 @@ def main():
 
     since, until = window_utc(today, DAYS)
     sessions = select_window(supa, "sessions", "user_email,started_at", since, until, "started_at")
-    t_since, t_until = window_utc(today, 1)
+    # Feedback: rolling last 24h, not "the current IST day" — a late run that
+    # lands after IST midnight would otherwise skip the previous evening's
+    # feedback for good.
+    now_utc = now_ist.astimezone(timezone.utc)
+    t_since = (now_utc - timedelta(hours=24)).isoformat()
+    t_until = (now_utc + timedelta(minutes=1)).isoformat()
     feedback = select_window(
         supa, "feedback",
         "user_email,platform_rating,usefulness_rating,feedback_text,created_at",

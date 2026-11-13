@@ -1,7 +1,7 @@
 import { NextResponse } from "next/server";
 import { requireAdmin } from "@/lib/admin";
 import { supabaseAdmin } from "@/lib/supabase-server";
-import { fetchDocContentHtml } from "@/lib/google-docs";
+import { fetchDocContentHtml, fetchDocMeta } from "@/lib/google-docs";
 
 export async function GET() {
   if (!(await requireAdmin())) return NextResponse.json({ ok: false }, { status: 403 });
@@ -71,7 +71,9 @@ export async function POST(req: Request) {
     if (!packet?.doc_link) return NextResponse.json({ ok: false, error: "No doc link set for this packet." }, { status: 400 });
     const sync = await syncContent(admin, id, packet.doc_link);
     if (!sync.ok) return NextResponse.json({ ok: false, error: sync.error }, { status: 400 });
-    return NextResponse.json({ ok: true });
+    // Diagnostic only — never fails the refresh.
+    const meta = await fetchDocMeta(packet.doc_link).catch(() => null);
+    return NextResponse.json({ ok: true, docName: meta?.name ?? null, docModified: meta?.modifiedTime ?? null });
   }
 
   // default: save the doc link (existing behavior), then (re)sync content from it

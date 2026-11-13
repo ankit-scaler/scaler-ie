@@ -7,7 +7,7 @@ import { useUrlFilterState } from "@/lib/useUrlFilterState";
 
 export type A = { id: number; program: string | null; company: string; role: string; round: string | null; link: string | null };
 
-const DEFAULT_STATE: FilterState = { program: "All", company: "All", role: "All", round: "All", topic: "All", q: "" };
+const DEFAULT_STATE: FilterState = { program: "All", company: "All", role: [], round: [], topic: "All", q: "" };
 
 export default function AssignmentsView({ initial }: { initial: A[] }) {
   const [state, setState] = useUrlFilterState(DEFAULT_STATE);
@@ -19,27 +19,31 @@ export default function AssignmentsView({ initial }: { initial: A[] }) {
 
   const filtered = useMemo(() => {
     const qL = state.q.trim().toLowerCase();
+    const roleSet = new Set(state.role.map(r => r.trim()));
     return initial.filter(x =>
       (state.program === "All" || (x.program || "").toLowerCase() === state.program.toLowerCase()) &&
       (state.company === "All" || x.company.trim() === state.company.trim()) &&
-      (state.role === "All"    || x.role.trim()    === state.role.trim()) &&
+      (roleSet.size === 0 || roleSet.has(x.role.trim())) &&
       (!qL || `${x.company} ${x.role}`.toLowerCase().includes(qL))
     );
   }, [initial, state]);
 
+  // Logged only when exactly one role is selected (multi-role browsing would
+  // inflate the Tracking page's "searched" counts).
+  const singleRole = state.role.length === 1 ? state.role[0] : null;
   useEffect(() => {
-    if (state.company !== "All" && state.role !== "All") {
+    if (state.company !== "All" && singleRole !== null) {
       fetch("/api/track", {
         method: "POST",
         headers: { "content-type": "application/json" },
         body: JSON.stringify({
-          company: state.company, role: state.role,
+          company: state.company, role: singleRole,
           program: state.program === "All" ? null : state.program,
           path: "/assignments",
         }),
       }).catch(() => {});
     }
-  }, [state.company, state.role, state.program]);
+  }, [state.company, singleRole, state.program]);
 
   return (
     <div className="space-y-8">
