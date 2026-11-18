@@ -374,6 +374,116 @@ def build_feedback_rows(feedback):
         ])
     return rows
 
+# ---- Resumes (model_resume_event) -----------------------------------------
+# Python twins of lib/resume-tracking.ts: same grains, columns, labels and
+# ordering, so a sheet tab and the matching CSV export never disagree.
+RESUME_EXP_LABELS = {"fresher": "Fresher (under 1 yr)", "1-4": "1–4 yrs", "5-10": "5–10 yrs", "10plus": "10+ yrs"}
+RESUME_BG_LABELS = {"cs": "CS/IT degree", "noncs": "Non-CS degree", "same": "Same domain",
+                    "different": "Different tech domain", "switcher": "Switching from non-tech"}
+
+def _resume_facet(labels, v):
+    s = v if isinstance(v, str) else ""
+    return "All" if (not s or s == "All") else labels.get(s, s)
+
+def _resume_name(e):
+    r = e.get("model_resume") or {}
+    if r.get("program"):
+        return f"{r['program']} · {r.get('exp_label') or '—'} · {r.get('background_label') or '—'}"
+    return e.get("slug") or "—"
+
+def _resume_sorted(rows, last_key="last"):
+    """Newest first; ties broken by email then the remaining text columns
+    (ascending), matching byLastDesc in lib/resume-tracking.ts."""
+    rows = sorted(rows, key=lambda r: tuple(str(x) for x in r["tiebreak"]))
+    return sorted(rows, key=lambda r: r[last_key], reverse=True)
+
+def _resume_per_resume(events, kind, headers):
+    m = {}
+    for e in events:
+        if e["kind"] != kind: continue
+        ts = e["at"]
+        k = (e["user_email"], _resume_name(e))
+        a = m.setdefault(k, {"count": 0, "first": ts, "last": ts})
+        a["count"] += 1
+        if ts < a["first"]: a["first"] = ts
+        if ts > a["last"]: a["last"] = ts
+    items = [{"email": k[0], "resume": k[1], "tiebreak": (k[0], k[1]), **v} for k, v in m.items()]
+    rows = [headers]
+    for r in _resume_sorted(items):
+        rows.append([r["email"], r["resume"], _fmt_ts(r["first"]), _fmt_ts(r["last"]), r["count"]])
+    return rows
+
+def build_resume_opens(events):
+    return _resume_per_resume(events, "resume_view", ["Email", "Resume", "First opened", "Last opened", "Count"])
+
+def build_resume_downloads(events):
+    return _resume_per_resume(events, "pdf_download", ["Email", "Resume", "First downloaded", "Last downloaded", "Count"])
+
+def build_resume_clicks(events):
+    m = {}
+    for e in events:
+        if e["kind"] not in ("note_open", "see_example"): continue
+        k = (e["user_email"], _resume_name(e))
+        r = m.setdefault(k, {"email": k[0], "resume": k[1], "notes": 0, "examples": 0, "last": e["at"], "tiebreak": (k[0], k[1])})
+        if e["kind"] == "note_open": r["notes"] += 1
+        else: r["examples"] += 1
+        if e["at"] > r["last"]: r["last"] = e["at"]
+    rows = [["Email", "Resume", "Notes opened", "See it in this resume clicks", "Last click"]]
+    for r in _resume_sorted(m.values()):
+        rows.append([r["email"], r["resume"], r["notes"], r["examples"], _fmt_ts(r["last"])])
+    return rows
+
+def build_resume_filters(events):
+    m = {}
+    for e in events:
+        if e["kind"] != "filter": continue
+        d = e.get("detail") or {}
+        p = d.get("program") if isinstance(d.get("program"), str) and d.get("program") else "All"
+        k = (e["user_email"], p, _resume_facet(RESUME_EXP_LABELS, d.get("band")), _resume_facet(RESUME_BG_LABELS, d.get("bg")))
+        a = m.setdefault(k, {"count": 0, "first": e["at"], "last": e["at"]})
+        a["count"] += 1
+        if e["at"] < a["first"]: a["first"] = e["at"]
+        if e["at"] > a["last"]: a["last"] = e["at"]
+    items = [{"key": k, "tiebreak": (k[0], k[1], k[2], k[3]), **v} for k, v in m.items()]
+    rows = [["Email", "Programme", "Experience", "Background", "First applied", "Last applied", "Count"]]
+    for r in _resume_sorted(items):
+        email, p, x, b = r["key"]
+        rows.append([email, p, x, b, _fmt_ts(r["first"]), _fmt_ts(r["last"]), r["count"]])
+    return rows
+
+def build_resume_review_clicks(events):
+    m = {}
+    for e in events:
+        if e["kind"] not in ("mentor_cta", "mentor_dashboard_cta"): continue
+        k = (e["user_email"], _resume_name(e))
+        r = m.setdefault(k, {"email": k[0], "resume": k[1], "header": 0, "end": 0, "dashboard": 0, "last": e["at"], "tiebreak": (k[0], k[1])})
+        if e["kind"] == "mentor_dashboard_cta": r["dashboard"] += 1
+        elif (e.get("detail") or {}).get("from") == "end": r["end"] += 1
+        else: r["header"] += 1
+        if e["at"] > r["last"]: r["last"] = e["at"]
+    rows = [["Email", "Resume", "Header button", "End-of-page button", "Went to Scaler dashboard", "Last click"]]
+    for r in _resume_sorted(m.values()):
+        rows.append([r["email"], r["resume"], r["header"], r["end"], r["dashboard"], _fmt_ts(r["last"])])
+    return rows
+
+def build_page_visits(views, path):
+    """Who opened a page (e.g. "/packets" = Trending roles): one row per
+    learner with first/last visit and count. Twin of buildPageVisitByEmail in
+    lib/page-visit-tracking.ts — same columns and ordering (newest last visit
+    first, ties by email)."""
+    m = {}
+    for v in views:
+        if v.get("path") != path: continue
+        r = m.setdefault(v["user_email"], {"email": v["user_email"], "first": v["created_at"], "last": v["created_at"], "count": 0})
+        r["count"] += 1
+        if v["created_at"] < r["first"]: r["first"] = v["created_at"]
+        if v["created_at"] > r["last"]: r["last"] = v["created_at"]
+    rows = [["Email", "First visit", "Last visit", "Count"]]
+    ordered = sorted(m.values(), key=lambda r: r["email"])
+    for r in sorted(ordered, key=lambda r: r["last"], reverse=True):
+        rows.append([r["email"], _fmt_ts(r["first"]), _fmt_ts(r["last"]), r["count"]])
+    return rows
+
 def select_packet_requests(supa):
     """Packet requests that got escalated to Slack (no existing packet was
     found for that company+role) — matched requests need no human follow-up,
@@ -433,7 +543,7 @@ def sync_tracking_to_sheet(gc, supa):
     thirty_days_ago = (datetime.utcnow() - timedelta(days=30)).isoformat()
 
     for window_label, since in (("All time", None), ("Last 30d", thirty_days_ago)):
-        views             = select_paged(supa, "page_views", "user_email,company,role,program,topic,created_at", since, "created_at")
+        views             = select_paged(supa, "page_views", "user_email,company,role,program,topic,path,created_at", since, "created_at")
         sessions          = select_paged(supa, "sessions", "user_email,started_at", since, "started_at")
         packet_views      = select_paged(supa, "packet_views", "user_email,created_at,packets(role,yoe)", since, "created_at")
         assignment_views  = select_paged(supa, "assignment_views", "user_email,created_at,assignments(program,company,role,round)", since, "created_at")
@@ -448,6 +558,22 @@ def sync_tracking_to_sheet(gc, supa):
         write_subsheet(tsh, f"Assignment Opens ({window_label})", build_assignment_opens(assignment_views))
         write_subsheet(tsh, f"Videos Watched ({window_label})", build_video_watches(video_views))
         write_subsheet(tsh, f"Feedback ({window_label})", build_feedback_rows(feedback))
+        # Trending roles (nav tab "Prepare for Trending roles", path /packets): who opened the page.
+        write_subsheet(tsh, f"Trending Roles Visits ({window_label})", build_page_visits(views, "/packets"))
+
+        # Resumes. Isolated in its own try so a missing/renamed table can never
+        # stop the tabs above (or the other window) from being written.
+        try:
+            resume_events = select_paged(
+                supa, "model_resume_event",
+                "user_email,slug,kind,detail,at,model_resume(program,exp_label,background_label)", since, "at")
+            write_subsheet(tsh, f"Resume Opens ({window_label})", build_resume_opens(resume_events))
+            write_subsheet(tsh, f"Resume Clicks ({window_label})", build_resume_clicks(resume_events))
+            write_subsheet(tsh, f"Resume Filters ({window_label})", build_resume_filters(resume_events))
+            write_subsheet(tsh, f"Resume Downloads ({window_label})", build_resume_downloads(resume_events))
+            write_subsheet(tsh, f"Resume Review Clicks ({window_label})", build_resume_review_clicks(resume_events))
+        except Exception as e:
+            print(f"tracking sheet: resume tabs ({window_label}) skipped: {e}", file=sys.stderr)
 
     packet_requests = select_packet_requests(supa)
     write_subsheet(tsh, "Packet Requests (Raised on Slack)", build_packet_requests_rows(packet_requests))
@@ -510,6 +636,29 @@ def classify_new_topics(supa):
         classified += 1
     print(f"topic classification: classified {classified}, {errors} error(s), {len(rows)} row(s) considered")
 
+# "Last synced" marker for the website's Questions cache. The page puts this
+# value in its cache key (lib/sync-version.ts), so a new value = fresh questions
+# on the first visit after the sync, instead of waiting for the 6 h cache timer.
+QUESTIONS_SYNC_KEY = "questions_synced_at"
+
+def questions_marker_row(now=None):
+    now = now or datetime.now(timezone.utc)
+    return {
+        "key": QUESTIONS_SYNC_KEY,
+        "value": now.strftime("%Y-%m-%dT%H:%M:%SZ"),
+        "updated_at": now.isoformat(),
+    }
+
+def mark_questions_synced(supa):
+    """Never raises: a missing sync_meta table (supabase/add_sync_meta.sql not
+    run yet) must not fail or block the sync itself."""
+    try:
+        supa.table("sync_meta").upsert(questions_marker_row(), on_conflict="key").execute()
+        print(f"sync_meta: {QUESTIONS_SYNC_KEY} updated")
+    except Exception as e:
+        print(f"sync_meta: could not update {QUESTIONS_SYNC_KEY} "
+              f"(has supabase/add_sync_meta.sql been run?): {e}", file=sys.stderr)
+
 def main():
     # Read-write (not read-only): the tracking-insights export below writes
     # subsheets back to a spreadsheet. Everything else here only ever reads.
@@ -569,6 +718,10 @@ def main():
         classify_new_topics(supa)
     except Exception as e:
         print(f"topic classification error: {e}", file=sys.stderr)
+
+    # Questions (upsert, optional hard-refresh delete, topic classification) are
+    # all done: tell the website its cached copy is out of date.
+    mark_questions_synced(supa)
 
     # --- Assignments ---
     try:
