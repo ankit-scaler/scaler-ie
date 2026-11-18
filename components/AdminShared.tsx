@@ -7,12 +7,17 @@ export const ACCENTS = {
 } as const;
 export type Accent = keyof typeof ACCENTS;
 
-export function SectionLabel({ children, accent = "acad" }: { children: React.ReactNode; accent?: Accent }) {
+// `id` makes the section a jump-link target; `note` is a one-line plain-English
+// explanation of what the numbers below do (and don't) count.
+export function SectionLabel({ children, accent = "acad", id, note }: { children: React.ReactNode; accent?: Accent; id?: string; note?: string }) {
   const a = ACCENTS[accent];
   return (
-    <div className="flex items-center gap-2.5 pt-2">
-      <span className={`h-4 w-1.5 rounded-full ${a.bar}`} />
-      <h2 className="font-display text-2xl font-bold leading-none">{children}</h2>
+    <div id={id} className="scroll-mt-24 pt-2">
+      <div className="flex items-center gap-2.5">
+        <span className={`h-4 w-1.5 rounded-full ${a.bar}`} />
+        <h2 className="font-display text-2xl font-bold leading-none">{children}</h2>
+      </div>
+      {note && <p className="mt-2 max-w-3xl pl-4 text-sm leading-snug text-mute">{note}</p>}
     </div>
   );
 }

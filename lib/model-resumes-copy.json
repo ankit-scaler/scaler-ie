@@ -1,0 +1,82 @@
+{
+  "_note": "Exact UI text. {n} = a number filled in at runtime. Settings at the bottom are config, not copy.",
+  "nav": {
+    "open_hirings": "Open hirings",
+    "resumes": "Resumes",
+    "new_badge": "NEW",
+    "interview_prep": "Interview prep",
+    "prep_menu": [
+      {"group": "Preparing for a specific company", "items": [
+        {"label": "Company packets", "sub": "Everything known about one company’s process"},
+        {"label": "Questions", "sub": "Real interview questions, by company and topic"},
+        {"label": "Assignments", "sub": "Take-home tasks companies have set"}]},
+      {"group": "Preparing for a role", "items": [
+        {"label": "Trending roles", "sub": "Prep docs by role and experience"}]},
+      {"group": "Revising concepts", "items": [
+        {"label": "Crash course ↗", "sub": "Revise concepts in Cortex"}]}
+    ]
+  },
+  "list": {
+    "title": "Model resumes",
+    "lede": "44 example resumes, one for each programme, experience level and background. Open one and tap any marked line to see why it works.",
+    "filter_programme": "Programme",
+    "filter_experience": "Experience",
+    "filter_background": "Background",
+    "all": "All",
+    "count": "{n} resumes",
+    "count_one": "1 resume",
+    "card_meta": "{pct}% of bullets carry a number · {notes} notes",
+    "empty": "No model resume matches these filters. Clear one to see more."
+  },
+  "facets": {
+    "program": ["Academy", "DSML", "AIML", "DevOps"],
+    "exp_band": {"fresher": "Fresher (under 1 yr)", "1-4": "1–4 yrs", "5-10": "5–10 yrs", "10plus": "10+ yrs"},
+    "background": {"cs": "CS/IT degree", "noncs": "Non-CS degree", "same": "Same domain", "different": "Different tech domain", "switcher": "Switching from non-tech"},
+    "background_rule": "Fresher shows CS/IT degree and Non-CS degree only; every other band shows Same domain, Different tech domain and Switching from non-tech; All shows all five."
+  },
+  "detail": {
+    "back": "← All model resumes",
+    "download_pdf": "Download PDF",
+    "book_review": "Book a resume review",
+    "recruiters_title": "What recruiters look for",
+    "howto": "Tap any numbered line to see why it works.",
+    "paper_strip_left": "Model resume · {program} · {exp_label} · {background_label}",
+    "paper_strip_right": "Personal and company details hidden",
+    "contact_hidden": "contact details hidden",
+    "sections": {"work": "Work experience", "projects": "Projects", "education": "Education", "skills": "Skills", "achievements": "Achievements and certifications"}
+  },
+  "notes": {
+    "kind_labels": {"strong": "✓ Why it works", "star": "★ STAR breakdown", "contrast": "⇄ Weaker vs this", "tip": "✎ Tip"},
+    "kind_label_rule": "Show the kind label only when the resume mixes more than one kind of note.",
+    "star_sublabel": "STAR breakdown",
+    "star_letters": {"S": "Situation", "T": "Task", "A": "Action", "R": "Result"},
+    "weaker_label": "A weaker draft",
+    "this_resume_label": "This resume"
+  },
+  "checklist": {
+    "title": "Check your own resume",
+    "lede": "Go through your own resume with this list before you apply.",
+    "do": "Do",
+    "dont": "Don’t",
+    "see_example": "See it in this resume"
+  },
+  "end_cta": {
+    "title": "Checked your resume against this list?",
+    "body": "Get a mentor to go through it with you one-on-one.",
+    "button": "Book a resume review"
+  },
+  "review_popup": {
+    "title": "How to book a resume review with your mentor",
+    "steps": "Watch the walkthrough, then book the session from your Scaler dashboard.",
+    "primary_button": "Go to my Scaler dashboard ↗",
+    "secondary_button": "Watch on Loom ↗",
+    "close_label": "Close"
+  },
+  "settings": {
+    "loom_embed_url": "https://www.loom.com/embed/6bbdcb9dc07c49e09e17154b7c2fd412",
+    "loom_share_url": "https://www.loom.com/share/6bbdcb9dc07c49e09e17154b7c2fd412",
+    "scaler_dashboard_url": "https://www.scaler.com/academy/mentee-dashboard/",
+    "pdf_signed_url_seconds": 300,
+    "_confirm": "scaler_dashboard_url is a placeholder until the team confirms the exact page where learners book a mentor session."
+  }
+}

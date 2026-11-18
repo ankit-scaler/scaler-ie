@@ -258,8 +258,38 @@ def select_paged(supa, table, select_cols, since_iso, date_col):
         frm += PAGE
     return out
 
+# India Standard Time is a fixed +05:30 (no DST): the same anchor as the app
+# (app/api/admin/stats/route.ts, lib/tracking-tables.ts), so every date and time
+# in the tracking sheet matches what the Tracking page shows. Stored timestamps
+# are UTC; they are converted here, never sliced.
+IST = timezone(timedelta(hours=5, minutes=30))
+
+def _to_ist(ts):
+    if not ts:
+        return None
+    s = str(ts).strip().replace("Z", "+00:00")
+    # Python 3.10's fromisoformat needs 3 or 6 fractional digits; Postgres can
+    # return 1-6. Normalise to 6 so any supported Python version parses it.
+    s = re.sub(r"(\.\d+)", lambda m: m.group(1)[:7].ljust(7, "0"), s, count=1)
+    d = datetime.fromisoformat(s)
+    if d.tzinfo is None:
+        d = d.replace(tzinfo=timezone.utc)
+    return d.astimezone(IST)
+
 def _fmt_ts(ts):
-    return (ts or "")[:19].replace("T", " ")
+    d = _to_ist(ts)
+    return d.strftime("%Y-%m-%d %H:%M:%S") if d else ""
+
+def _ist_date(ts):
+    d = _to_ist(ts)
+    return d.strftime("%Y-%m-%d") if d else ""
+
+def last_30d_since_iso(now=None):
+    """Start of the 'Last 30d' window: IST midnight 29 days ago, i.e. today plus
+    the 29 days before it — exactly the app's 30D range."""
+    today = (now or datetime.now(timezone.utc)).astimezone(IST).date()
+    start = datetime(today.year, today.month, today.day, tzinfo=IST) - timedelta(days=29)
+    return start.astimezone(timezone.utc).isoformat()
 
 # Each builder mirrors the equivalent grouping logic in AdminDashboard.tsx —
 # same grain, same columns — so a subsheet and its CSV-export counterpart on
@@ -273,18 +303,17 @@ def build_usage_summary(views, sessions, packet_views):
     for v in views: touch(v["user_email"], v["created_at"])["views"] += 1
     for s in sessions: touch(s["user_email"], s["started_at"])
     for p in packet_views: touch(p["user_email"], p["created_at"])["packetsRead"] += 1
-    rows = [["Email", "Views", "Packets Read", "Last Activity"]]
+    rows = [["Email", "Views", "Packets Read", "Last Activity (IST)"]]
     for email in sorted(m):
         e = m[email]
         rows.append([email, e["views"], e["packetsRead"], _fmt_ts(e["last"])])
     return rows
 
 def build_daily_visits(sessions):
-    rows = [["Email", "Date", "Time"]]
+    rows = [["Email", "Date (IST)", "Time (IST)"]]
     for s in sorted(sessions, key=lambda r: r["started_at"], reverse=True):
-        started = s["started_at"] or ""
-        date, time = (started[:10], started[11:19]) if started else ("", "")
-        rows.append([s["user_email"], date, time])
+        d = _to_ist(s["started_at"])
+        rows.append([s["user_email"], d.strftime("%Y-%m-%d") if d else "", d.strftime("%H:%M:%S") if d else ""])
     return rows
 
 def build_topic_breakdown(views):
@@ -297,7 +326,7 @@ def build_topic_breakdown(views):
         e["count"] += 1
         if v["created_at"] < e["first"]: e["first"] = v["created_at"]
         if v["created_at"] > e["last"]: e["last"] = v["created_at"]
-    rows = [["Topic", "Email", "First time date", "Last time date", "Count"]]
+    rows = [["Topic", "Email", "First time date (IST)", "Last time date (IST)", "Count"]]
     for (email, topic), e in sorted(m.items(), key=lambda kv: kv[1]["last"], reverse=True):
         rows.append([topic, email, _fmt_ts(e["first"]), _fmt_ts(e["last"]), e["count"]])
     return rows
@@ -313,7 +342,7 @@ def build_company_role_breakdown(views):
         e["count"] += 1
         if v["created_at"] < e["first"]: e["first"] = v["created_at"]
         if v["created_at"] > e["last"]: e["last"] = v["created_at"]
-    rows = [["Program", "Company", "Role", "Email", "First time date", "Last time date", "Count"]]
+    rows = [["Program", "Company", "Role", "Email", "First time date (IST)", "Last time date (IST)", "Count"]]
     for (email, program, company, role), e in sorted(m.items(), key=lambda kv: kv[1]["last"], reverse=True):
         rows.append([program, company, role, email, _fmt_ts(e["first"]), _fmt_ts(e["last"]), e["count"]])
     return rows
@@ -328,7 +357,7 @@ def build_packet_reads(packet_views):
         e["count"] += 1
         if v["created_at"] < e["first"]: e["first"] = v["created_at"]
         if v["created_at"] > e["last"]: e["last"] = v["created_at"]
-    rows = [["Packet", "Email", "First read", "Last read", "Count"]]
+    rows = [["Packet", "Email", "First read (IST)", "Last read (IST)", "Count"]]
     for (email, packet), e in sorted(m.items(), key=lambda kv: kv[1]["last"], reverse=True):
         rows.append([packet, email, _fmt_ts(e["first"]), _fmt_ts(e["last"]), e["count"]])
     return rows
@@ -344,7 +373,7 @@ def build_assignment_opens(assignment_views):
         e["count"] += 1
         if v["created_at"] < e["first"]: e["first"] = v["created_at"]
         if v["created_at"] > e["last"]: e["last"] = v["created_at"]
-    rows = [["Assignment", "Email", "First opened", "Last opened", "Count"]]
+    rows = [["Assignment", "Email", "First opened (IST)", "Last opened (IST)", "Count"]]
     for (email, assignment), e in sorted(m.items(), key=lambda kv: kv[1]["last"], reverse=True):
         rows.append([assignment, email, _fmt_ts(e["first"]), _fmt_ts(e["last"]), e["count"]])
     return rows
@@ -360,13 +389,13 @@ def build_video_watches(video_views):
         e["count"] += 1
         if v["created_at"] < e["first"]: e["first"] = v["created_at"]
         if v["created_at"] > e["last"]: e["last"] = v["created_at"]
-    rows = [["Video", "Email", "First watched", "Last watched", "Count"]]
+    rows = [["Video", "Email", "First watched (IST)", "Last watched (IST)", "Count"]]
     for (email, video), e in sorted(m.items(), key=lambda kv: kv[1]["last"], reverse=True):
         rows.append([video, email, _fmt_ts(e["first"]), _fmt_ts(e["last"]), e["count"]])
     return rows
 
 def build_feedback_rows(feedback):
-    rows = [["Email", "Platform Rating", "Usefulness Rating", "Feedback", "Submitted At"]]
+    rows = [["Email", "Platform Rating", "Usefulness Rating", "Feedback", "Submitted At (IST)"]]
     for f in sorted(feedback, key=lambda r: r["created_at"], reverse=True):
         rows.append([
             f["user_email"], f["platform_rating"], f["usefulness_rating"],
@@ -414,10 +443,10 @@ def _resume_per_resume(events, kind, headers):
     return rows
 
 def build_resume_opens(events):
-    return _resume_per_resume(events, "resume_view", ["Email", "Resume", "First opened", "Last opened", "Count"])
+    return _resume_per_resume(events, "resume_view", ["Email", "Resume", "First opened (IST)", "Last opened (IST)", "Count"])
 
 def build_resume_downloads(events):
-    return _resume_per_resume(events, "pdf_download", ["Email", "Resume", "First downloaded", "Last downloaded", "Count"])
+    return _resume_per_resume(events, "pdf_download", ["Email", "Resume", "First downloaded (IST)", "Last downloaded (IST)", "Count"])
 
 def build_resume_clicks(events):
     m = {}
@@ -428,7 +457,7 @@ def build_resume_clicks(events):
         if e["kind"] == "note_open": r["notes"] += 1
         else: r["examples"] += 1
         if e["at"] > r["last"]: r["last"] = e["at"]
-    rows = [["Email", "Resume", "Notes opened", "See it in this resume clicks", "Last click"]]
+    rows = [["Email", "Resume", "Notes opened", "See it in this resume clicks", "Last click (IST)"]]
     for r in _resume_sorted(m.values()):
         rows.append([r["email"], r["resume"], r["notes"], r["examples"], _fmt_ts(r["last"])])
     return rows
@@ -445,7 +474,7 @@ def build_resume_filters(events):
         if e["at"] < a["first"]: a["first"] = e["at"]
         if e["at"] > a["last"]: a["last"] = e["at"]
     items = [{"key": k, "tiebreak": (k[0], k[1], k[2], k[3]), **v} for k, v in m.items()]
-    rows = [["Email", "Programme", "Experience", "Background", "First applied", "Last applied", "Count"]]
+    rows = [["Email", "Programme", "Experience", "Background", "First applied (IST)", "Last applied (IST)", "Count"]]
     for r in _resume_sorted(items):
         email, p, x, b = r["key"]
         rows.append([email, p, x, b, _fmt_ts(r["first"]), _fmt_ts(r["last"]), r["count"]])
@@ -461,7 +490,7 @@ def build_resume_review_clicks(events):
         elif (e.get("detail") or {}).get("from") == "end": r["end"] += 1
         else: r["header"] += 1
         if e["at"] > r["last"]: r["last"] = e["at"]
-    rows = [["Email", "Resume", "Header button", "End-of-page button", "Went to Scaler dashboard", "Last click"]]
+    rows = [["Email", "Resume", "Header button", "End-of-page button", "Went to Scaler dashboard", "Last click (IST)"]]
     for r in _resume_sorted(m.values()):
         rows.append([r["email"], r["resume"], r["header"], r["end"], r["dashboard"], _fmt_ts(r["last"])])
     return rows
@@ -478,10 +507,80 @@ def build_page_visits(views, path):
         r["count"] += 1
         if v["created_at"] < r["first"]: r["first"] = v["created_at"]
         if v["created_at"] > r["last"]: r["last"] = v["created_at"]
-    rows = [["Email", "First visit", "Last visit", "Count"]]
+    rows = [["Email", "First visit (IST)", "Last visit (IST)", "Count"]]
     ordered = sorted(m.values(), key=lambda r: r["email"])
     for r in sorted(ordered, key=lambda r: r["last"], reverse=True):
         rows.append([r["email"], _fmt_ts(r["first"]), _fmt_ts(r["last"]), r["count"]])
+    return rows
+
+# ---- Daily tables: twins of lib/tracking-tables.ts. One row per learner per IST
+# day (or per learner+item per day); newest day first, then email, then item/type
+# (ascending, ordinal) — identical ordering to the app's CSV exports.
+def _daily_rows(rows, email_key, ts_key):
+    seen, out = set(), []
+    for r in rows:
+        email, date = r[email_key], _ist_date(r[ts_key])
+        if (email, date) in seen: continue
+        seen.add((email, date))
+        out.append((email, date))
+    return sorted(out, key=lambda x: (-int(x[1].replace("-", "")) if x[1] else 0, x[0]))
+
+def _daily_item_rows(rows, email_key, item_fn, ts_key):
+    seen, out = set(), []
+    for r in rows:
+        email, item, date = r[email_key], item_fn(r), _ist_date(r[ts_key])
+        if (email, item, date) in seen: continue
+        seen.add((email, item, date))
+        out.append((email, item, date))
+    # newest day first; ties by email then item, both ascending
+    out.sort(key=lambda x: (x[0], x[1]))
+    out.sort(key=lambda x: x[2], reverse=True)
+    return out
+
+def build_daily_visitors(sessions):
+    """Unique learners per IST day (the app's 'Daily Visits (Opened App)' export)."""
+    rows = [["Email", "Date (IST)"]]
+    for email, date in sorted(sorted(_daily_rows(sessions, "user_email", "started_at"), key=lambda x: x[0]), key=lambda x: x[1], reverse=True):
+        rows.append([email, date])
+    return rows
+
+def _is_search_view(v):
+    return bool(v.get("company") or v.get("role") or v.get("topic"))
+
+def build_daily_searches(views):
+    """Learners who narrowed Questions/Assignments to a company, role or topic, once per day."""
+    rows = [["Email", "Date (IST)"]]
+    base = [v for v in views if _is_search_view(v)]
+    for email, date in sorted(sorted(_daily_rows(base, "user_email", "created_at"), key=lambda x: x[0]), key=lambda x: x[1], reverse=True):
+        rows.append([email, date])
+    return rows
+
+def build_daily_page_visits(views, path):
+    """Learners who opened a page (by path), once per IST day."""
+    rows = [["Email", "Date (IST)"]]
+    base = [v for v in views if v.get("path") == path]
+    for email, date in sorted(sorted(_daily_rows(base, "user_email", "created_at"), key=lambda x: x[0]), key=lambda x: x[1], reverse=True):
+        rows.append([email, date])
+    return rows
+
+def build_daily_content_engagement(packet_views, video_views):
+    """Learners who opened a Trending roles packet or a video link, once per day each."""
+    items = [(e, d, "Read a packet") for e, d in _daily_rows(packet_views, "user_email", "created_at")] + \
+            [(e, d, "Watched a video") for e, d in _daily_rows(video_views, "user_email", "created_at")]
+    items.sort(key=lambda x: (x[0], x[2]))
+    items.sort(key=lambda x: x[1], reverse=True)
+    return [["Email", "Date (IST)", "Type"]] + [[e, d, ty] for e, d, ty in items]
+
+def build_job_apply_clicks(job_applies):
+    rows = [["Email", "Job ID", "Date (IST)"]]
+    for email, item, date in _daily_item_rows(job_applies, "user_email", lambda r: str(r["job_id"]), "created_at"):
+        rows.append([email, item, date])
+    return rows
+
+def build_company_packet_opens(opens):
+    rows = [["Email", "Packet", "Date (IST)"]]
+    for email, item, date in _daily_item_rows(opens, "user_email", lambda r: str(r["slug"]), "created_at"):
+        rows.append([email, item, date])
     return rows
 
 def select_packet_requests(supa):
@@ -506,7 +605,7 @@ def select_packet_requests(supa):
     return out
 
 def build_packet_requests_rows(requests):
-    rows = [["Email", "Contact", "Company", "Role", "JD", "Interview/Assessment Date", "Requested At"]]
+    rows = [["Email", "Contact", "Company", "Role", "JD", "Interview/Assessment Date", "Requested At (IST)"]]
     for r in requests:
         rows.append([
             r["user_email"], r.get("contact_number") or "", r["company"], r["role"],
@@ -540,7 +639,7 @@ def sync_tracking_to_sheet(gc, supa):
         print(f"tracking sheet: failed to open, skipping: {e}", file=sys.stderr)
         return
 
-    thirty_days_ago = (datetime.utcnow() - timedelta(days=30)).isoformat()
+    thirty_days_ago = last_30d_since_iso()
 
     for window_label, since in (("All time", None), ("Last 30d", thirty_days_ago)):
         views             = select_paged(supa, "page_views", "user_email,company,role,program,topic,path,created_at", since, "created_at")
@@ -552,7 +651,9 @@ def sync_tracking_to_sheet(gc, supa):
 
         write_subsheet(tsh, f"Daily Visits ({window_label})", build_daily_visits(sessions))
         write_subsheet(tsh, f"Usage Summary ({window_label})", build_usage_summary(views, sessions, packet_views))
-        write_subsheet(tsh, f"Company & Role ({window_label})", build_company_role_breakdown(views))
+        # Questions searches only (path "/"), like the app's Company & role breakdown;
+        # Assignments searches also carry company+role and must not be mixed in.
+        write_subsheet(tsh, f"Company & Role ({window_label})", build_company_role_breakdown([v for v in views if v.get("path") == "/"]))
         write_subsheet(tsh, f"Topic Searches ({window_label})", build_topic_breakdown(views))
         write_subsheet(tsh, f"Packet Reads ({window_label})", build_packet_reads(packet_views))
         write_subsheet(tsh, f"Assignment Opens ({window_label})", build_assignment_opens(assignment_views))
@@ -560,6 +661,21 @@ def sync_tracking_to_sheet(gc, supa):
         write_subsheet(tsh, f"Feedback ({window_label})", build_feedback_rows(feedback))
         # Trending roles (nav tab "Prepare for Trending roles", path /packets): who opened the page.
         write_subsheet(tsh, f"Trending Roles Visits ({window_label})", build_page_visits(views, "/packets"))
+
+        # Daily tables: the same one-row-per-learner-per-IST-day exports the Tracking
+        # page offers as CSV. Own try so they can never stop the tabs above.
+        try:
+            job_applies = select_paged(supa, "job_applies", "user_email,job_id,created_at", since, "created_at")
+            company_packet_opens = select_paged(supa, "company_packet_opens", "user_email,slug,created_at", since, "created_at")
+            write_subsheet(tsh, f"Daily Visitors Unique ({window_label})", build_daily_visitors(sessions))
+            write_subsheet(tsh, f"Daily Searches ({window_label})", build_daily_searches(views))
+            write_subsheet(tsh, f"Daily Content Engagement ({window_label})", build_daily_content_engagement(packet_views, video_views))
+            write_subsheet(tsh, f"Open Hirings Visits ({window_label})", build_daily_page_visits(views, "/jobs"))
+            write_subsheet(tsh, f"Open Hirings Apply Clicks ({window_label})", build_job_apply_clicks(job_applies))
+            write_subsheet(tsh, f"Company Packets Visits ({window_label})", build_daily_page_visits(views, "/company-packets"))
+            write_subsheet(tsh, f"Company Packets Opens ({window_label})", build_company_packet_opens(company_packet_opens))
+        except Exception as e:
+            print(f"tracking sheet: daily tabs ({window_label}) skipped: {e}", file=sys.stderr)
 
         # Resumes. Isolated in its own try so a missing/renamed table can never
         # stop the tabs above (or the other window) from being written.

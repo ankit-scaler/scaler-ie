@@ -99,7 +99,7 @@ export async function GET(req: Request) {
   // back to counting from the raw rows, with a warning.
   const dailyP = admin.rpc("admin_daily_activity", { p_since: since, p_until: until });
 
-  const [views, sessions, admins, packetViews, assignmentViews, videoViews, feedback, jobApplies, companyPacketOpens, dailyRes] = await Promise.all([
+  const [views, sessions, admins, packetViews, assignmentViews, videoViews, feedback, jobApplies, companyPacketOpens, resumeEventRows, dailyRes] = await Promise.all([
     fetchWindow("page_views", "user_email,company,role,program,topic,path,created_at", "created_at"),
     fetchWindow("sessions", "user_email,duration_sec,started_at", "started_at"),
     admin.from("admins").select("email,added_at,added_by").order("added_at", { ascending: true }),
@@ -109,6 +109,9 @@ export async function GET(req: Request) {
     fetchWindow("feedback", "user_email,platform_rating,usefulness_rating,feedback_text,created_at", "created_at"),
     fetchWindow("job_applies", "user_email,job_id,created_at", "created_at"),
     fetchWindow("company_packet_opens", "user_email,slug,created_at", "created_at"),
+    // Resumes: every learner action (opens, note clicks, filters, PDF, review
+    // button). The embedded model_resume gives the human-readable resume name.
+    fetchWindow("model_resume_event", "user_email,slug,kind,detail,at,model_resume(program,exp_label,background_label)", "at"),
     dailyP,
   ]);
 
@@ -147,5 +150,12 @@ export async function GET(req: Request) {
     feedback,
     jobApplies,
     companyPacketOpens,
+    resumeEvents: resumeEventRows.map((r: any) => ({
+      user_email: r.user_email, created_at: r.at, slug: r.slug ?? null,
+      kind: r.kind, detail: r.detail ?? null,
+      program: r.model_resume?.program ?? null,
+      exp_label: r.model_resume?.exp_label ?? null,
+      background_label: r.model_resume?.background_label ?? null,
+    })),
   });
 }

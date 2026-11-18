@@ -1,10 +1,11 @@
 "use client";
-import { useMemo } from "react";
+import { useEffect, useMemo } from "react";
 import LoadingLink from "./LoadingLink";
 import Monogram from "./Monogram";
 import RequestPacketButton from "./RequestPacketButton";
 import { motion } from "framer-motion";
 import { useUrlParam } from "@/lib/useUrlParam";
+import { recordPageView } from "@/lib/track-client";
 
 type Packet = { id: number; role: string; yoe: string; doc_link: string | null; sort_order: number; content_synced_at: string | null; hasVideoResources: boolean };
 
@@ -12,6 +13,9 @@ export default function PacketsView({ packets }: { packets: Packet[] }) {
   const roles = useMemo(() => ["All", ...Array.from(new Set(packets.map(p => p.role)))], [packets]);
   const [role, setRole] = useUrlParam("role", "All");
   const filtered = role === "All" ? packets : packets.filter(p => p.role === role);
+
+  // One visit event per page open ("who opened Trending roles" on the Tracking page).
+  useEffect(() => { recordPageView("/packets"); }, []);
 
   return (
     <div className="space-y-8">

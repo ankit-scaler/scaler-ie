@@ -5,7 +5,6 @@ import { useEffect, useRef, useState } from "react";
 import { motion } from "framer-motion";
 import { supabaseBrowser } from "@/lib/supabase-browser";
 import ThemeToggle from "./ThemeToggle";
-import ScalerLogo from "./ScalerLogo";
 
 const ICON = {
   q: <path d="M4 5h12v8H9l-4 3v-3H4z" />,
@@ -14,17 +13,51 @@ const ICON = {
   k: <path d="M4 4h8a3 3 0 013 3v9H7a3 3 0 01-3-3z" />,
   j: <><rect x="3" y="6" width="14" height="10" rx="2" /><path d="M7 6V4h6v2" /></>,
   r: <path d="M5 10a5 5 0 119 3M14 16v-3h-3" />,
+  f: <><path d="M6 3h5l4 4v10H6z" /><path d="M11 3v4h4M8.5 11h4M8.5 14h4" /></>,
+  x: <path d="M7 3h10v10M17 3L5 15" />,
 };
 const Icon = ({ k }: { k: keyof typeof ICON }) => (
   <svg className="h-4 w-4 shrink-0" viewBox="0 0 20 20" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round" aria-hidden>{ICON[k]}</svg>
 );
-const MAIN_TABS: { href: string; label: string; icon: keyof typeof ICON }[] = [
-  { href: "/", label: "Questions", icon: "q" },
-  { href: "/assignments", label: "Assignments", icon: "a" },
-  { href: "/packets", label: "Prepare for Trending roles", icon: "p" },
-  { href: "/company-packets", label: "Packets", icon: "k" },
-];
 const CORTEX_URL = "https://cortex-by-scaler.up.railway.app/login";
+// Model resumes list (app/resumes). Change this one constant if the route moves.
+const RESUME_HREF = "/resumes";
+
+type NavItem = {
+  href: string; label: string; hint: string; icon: keyof typeof ICON;
+  short?: string;      // shorter label for the pill; `label` stays as tooltip + menu text
+  isNew?: boolean; external?: boolean;
+  img?: string;        // image icon instead of the line icon
+  live?: boolean;      // blinking red dot: "live openings"
+};
+// Two groups: Learn (the prep pages) and Career (getting the job).
+const LEARN_TABS: NavItem[] = [
+  { href: "/", label: "Questions", hint: "Real interview questions", icon: "q" },
+  { href: "/assignments", label: "Assignments", hint: "Take-home tasks by company", icon: "a" },
+  { href: "/packets", label: "Prepare for Trending roles", short: "Trending roles", hint: "Role-wise prep packets", icon: "p" },
+  { href: "/company-packets", label: "Packets", hint: "Company interview packets", icon: "k" },
+];
+const JOBS_ITEM: NavItem = { href: "/jobs", label: "Open Hirings", short: "Hiring", hint: "Live job openings", icon: "j", img: "/icons/hiring.png", live: true };
+const CAREER_TABS: NavItem[] = [
+  { href: RESUME_HREF, label: "Resumes", hint: "Model resumes, annotated", icon: "f", isNew: true },
+  JOBS_ITEM,
+];
+const CORTEX_ITEM: NavItem = { href: CORTEX_URL, label: "Revise with Crash Course", short: "Crash Course", hint: "Opens in a new tab", icon: "r", external: true };
+
+const NewTag = () => (
+  <span className="relative z-10 rounded-full bg-acad px-1.5 py-0.5 font-mono text-[9px] font-semibold uppercase leading-none tracking-wider text-ink">New</span>
+);
+// The only blinking dot in the bar: Hiring has live openings.
+const LiveDot = () => (
+  <span className="relative z-10 inline-flex h-2 w-2" title="Live openings" aria-hidden>
+    <span className="absolute inline-flex h-full w-full animate-ping rounded-full bg-red-500 opacity-75" />
+    <span className="relative inline-flex h-2 w-2 rounded-full bg-red-500" />
+  </span>
+);
+const NavIcon = ({ item, size = "h-4 w-4" }: { item: NavItem; size?: string }) =>
+  item.img
+    ? <img src={item.img} alt="" width={20} height={20} className={`${size === "h-4 w-4" ? "h-5 w-5" : size} shrink-0`} />
+    : <Icon k={item.icon} />;
 
 export default function Header() {
   const [email, setEmail]   = useState<string | null>(null);
@@ -93,12 +126,16 @@ export default function Header() {
     };
   }, [navMenuOpen]);
 
-  const tab = (href: string, label: string, opts: { external?: boolean; highlight?: boolean; icon?: keyof typeof ICON } = {}) => {
-    const { external = false, highlight = false, icon } = opts;
-    const active = !external && path === href;
+  const tab = (item: NavItem, opts: { highlight?: boolean } = {}) => {
+    const { highlight = false } = opts;
+    const external = !!item.external;
+    const active = !external && path === item.href;
     return (
       <LoadingLink
-        href={href}
+        key={item.href}
+        href={item.href}
+        title={item.label}
+        aria-current={active ? "page" : undefined}
         {...(external ? { target: "_blank", rel: "noopener noreferrer" } : {})}
         className={`group relative inline-flex items-center gap-2 whitespace-nowrap rounded-full px-3.5 py-1.5 text-sm transition-colors duration-200 ${
           highlight
@@ -115,8 +152,11 @@ export default function Header() {
             transition={{ type: "spring", stiffness: 500, damping: 42 }}
           />
         )}
-        {icon && <span className="relative z-10"><Icon k={icon} /></span>}
-        <span className="relative z-10">{label}</span>
+        {!highlight && <span className="relative z-10"><NavIcon item={item} /></span>}
+        <span className="relative z-10">{item.short || item.label}</span>
+        {item.isNew && <NewTag />}
+        {item.live && <LiveDot />}
+        {external && highlight && <span className="relative z-10"><Icon k="x" /></span>}
       </LoadingLink>
     );
   };
@@ -125,24 +165,23 @@ export default function Header() {
     <header className="sticky top-0 z-40 border-b border-edge/60 bg-ink/70 backdrop-blur-xl">
       <div className="mx-auto flex w-full items-center justify-between gap-4 px-4 py-3 sm:px-6">
         <LoadingLink href="/" className="flex shrink-0 items-center gap-2 transition-opacity duration-200 hover:opacity-80">
-          <ScalerLogo className="h-6 w-auto text-text" />
+          <img src="/icons/scaler-academy.png" alt="Scaler" width={32} height={32} className="h-8 w-8" />
           <span className="hidden font-display text-xl leading-none sm:inline">Interview Vault</span>
-          <span className="relative hidden h-2 w-2 sm:inline-flex" title="Live">
-            <span className="absolute inline-flex h-full w-full animate-ping rounded-full bg-red-500 opacity-75" />
-            <span className="relative inline-flex h-2 w-2 rounded-full bg-red-500" />
-          </span>
         </LoadingLink>
         {email && (
           <>
-            {/* ≥1440px: full nav, never scrolls (sized to fit with room to spare). */}
-            <nav className="hidden min-w-0 flex-1 items-center justify-start gap-2 min-[1440px]:flex">
-              <div className="flex items-center gap-0.5 rounded-full bg-panel2 p-1">
-                {MAIN_TABS.map(t => tab(t.href, t.label, { icon: t.icon }))}
+            {/* ≥1360px: two floating pills centered in the bar (Learn | Career), never
+                scrolls. Crash Course sits in the right-hand cluster. */}
+            <nav aria-label="Main" className="hidden min-w-0 flex-1 items-center justify-center gap-2 min-[1360px]:flex">
+              <div className="flex items-center gap-0.5 rounded-full border border-edge/60 bg-panel2 p-1 shadow-card">
+                {LEARN_TABS.map(t => tab(t))}
               </div>
-              {tab(CORTEX_URL, "Revise with Crash Course", { external: true, highlight: true })}
+              <div className="flex items-center gap-0.5 rounded-full border border-edge/60 bg-panel2 p-1 shadow-card">
+                {CAREER_TABS.map(t => tab(t))}
+              </div>
             </nav>
             {/* Narrower screens: one Menu button instead of a scrolling strip. */}
-            <div className="relative min-w-0 flex-1 min-[1440px]:hidden" ref={navMenuRef}>
+            <div className="relative min-w-0 flex-1 min-[1360px]:hidden" ref={navMenuRef}>
               <button
                 onClick={() => setNavMenuOpen(v => !v)}
                 aria-expanded={navMenuOpen}
@@ -155,20 +194,27 @@ export default function Header() {
                 Menu
               </button>
               {navMenuOpen && (
-                <div role="menu" className="absolute left-0 top-full z-50 mt-2 w-72 max-w-[calc(100vw-2rem)] overflow-hidden rounded-xl border border-edge bg-panel p-1.5 shadow-card">
-                  {[...MAIN_TABS, { href: CORTEX_URL, label: "Revise with Crash Course", icon: "r" as const }].map(t => {
-                    const external = t.href.startsWith("http");
+                <div role="menu" className="absolute left-0 top-full z-50 mt-2 w-80 max-w-[calc(100vw-2rem)] overflow-hidden rounded-xl border border-edge bg-panel p-1.5 shadow-card">
+                  {[...LEARN_TABS, ...CAREER_TABS, CORTEX_ITEM].map(t => {
+                    const external = !!t.external;
                     const active = !external && path === t.href;
                     return (
                       <LoadingLink
                         key={t.href}
                         href={t.href}
+                        role="menuitem"
+                        aria-current={active ? "page" : undefined}
                         {...(external ? { target: "_blank", rel: "noopener noreferrer" } : {})}
                         className={`flex items-center gap-3 rounded-lg px-3 py-2.5 text-sm transition-colors ${
                           active ? "bg-panel2 font-semibold text-text" : "text-mute hover:bg-panel2 hover:text-text"
                         }`}
                       >
-                        <Icon k={t.icon} />{t.label}
+                        <NavIcon item={t} />
+                        <span className="min-w-0 flex-1">
+                          <span className="flex items-center gap-2">{t.label}{t.isNew && <NewTag />}{t.live && <LiveDot />}</span>
+                          <span className="block text-xs font-normal text-mute">{t.hint}</span>
+                        </span>
+                        {external && <Icon k="x" />}
                       </LoadingLink>
                     );
                   })}
@@ -178,16 +224,21 @@ export default function Header() {
           </>
         )}
         <div className="flex shrink-0 items-center gap-3">
+          {email && <div className="hidden min-[1360px]:block">{tab(CORTEX_ITEM, { highlight: true })}</div>}
+          {/* Below 1360px the pills fold into Menu; Hiring stays one tap away. */}
           {email && (
             <LoadingLink
-              href="/jobs"
-              title="Open Hirings"
-              aria-label="Open Hirings"
-              className={`flex h-9 w-9 items-center justify-center rounded-full border transition-colors duration-200 ${
-                path === "/jobs" ? "border-acad bg-acad/15" : "border-acad/40 bg-ink hover:border-acad/70 hover:bg-acad/15"
+              href={JOBS_ITEM.href}
+              title={JOBS_ITEM.label}
+              aria-label={JOBS_ITEM.label}
+              aria-current={path === JOBS_ITEM.href ? "page" : undefined}
+              className={`inline-flex items-center gap-2 rounded-full border px-2.5 py-1.5 text-sm font-medium transition-colors duration-200 min-[1360px]:hidden ${
+                path === JOBS_ITEM.href ? "border-acad bg-acad/15 text-text" : "border-acad/40 bg-ink text-text hover:border-acad/70 hover:bg-acad/15"
               }`}
             >
-              <img src="/icons/hiring.png" alt="" width={22} height={22} className="h-[22px] w-[22px]" />
+              <img src={JOBS_ITEM.img} alt="" width={20} height={20} className="h-5 w-5" />
+              <span className="hidden sm:inline">{JOBS_ITEM.short}</span>
+              <LiveDot />
             </LoadingLink>
           )}
           {!isPacketOpen && <ThemeToggle />}

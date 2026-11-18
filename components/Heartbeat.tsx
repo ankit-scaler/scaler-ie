@@ -1,32 +1,36 @@
 "use client";
 import { useEffect } from "react";
 import { supabaseBrowser } from "@/lib/supabase-browser";
+import { createVisitPinger } from "@/lib/visit-ping";
 
-// A "visit ping", not a heartbeat: every call is a Vercel function
-// invocation (/api/heartbeat) that counts toward Fluid Active CPU, so there
-// is NO repeating timer and no time-on-site tracking. One ping when a tab is
-// visible, and another only when the tab becomes visible again after more
-// than the server's 5-minute session window (so a return after a break
-// counts as a new visit). Hidden/background tabs send nothing.
-const SESSION_WINDOW_MS = 5 * 60_000;
-
+// Records one "visit" (a `sessions` row) per browser per 5 minutes.
+//
+// The row is inserted straight from the browser into Supabase under the
+// learner's own login (RLS policy "own sessions rw" only allows their own
+// email), so it needs NO Vercel function and costs no Fluid Active CPU. If the
+// direct insert ever fails, it falls back once to the old /api/heartbeat route
+// so visit tracking never silently stops. The 5-minute gate is remembered in
+// localStorage, so reloads and extra tabs don't add extra visits. No timer, no
+// time-on-site tracking, and hidden tabs record nothing. See lib/visit-ping.ts.
 export default function Heartbeat() {
   useEffect(() => {
     const sb = supabaseBrowser();
     let stop = false;
-    let last = 0;
-    const ping = async () => {
-      if (stop || document.visibilityState !== "visible") return;
-      const now = Date.now();
-      if (last && now - last < SESSION_WINDOW_MS) return;
-      last = now;
-      const { data } = await sb.auth.getUser();
-      if (!data.user?.email) { last = 0; return; }
-      fetch("/api/heartbeat", { method: "POST" }).catch(() => {});
-    };
-    ping();
-    document.addEventListener("visibilitychange", ping);
-    return () => { stop = true; document.removeEventListener("visibilitychange", ping); };
+    const ping = createVisitPinger({
+      now: () => Date.now(),
+      visible: () => !stop && document.visibilityState === "visible",
+      storage: (() => { try { return window.localStorage; } catch { return null; } })(),
+      getEmail: async () => (await sb.auth.getSession()).data.session?.user?.email ?? null,
+      insertSession: async (email) => {
+        const { error } = await sb.from("sessions").insert({ user_email: email });
+        return { error };
+      },
+      fallback: async () => (await fetch("/api/heartbeat", { method: "POST" })).ok,
+    });
+    const run = () => { ping().catch(() => {}); };
+    run();
+    document.addEventListener("visibilitychange", run);
+    return () => { stop = true; document.removeEventListener("visibilitychange", run); };
   }, []);
   return null;
 }

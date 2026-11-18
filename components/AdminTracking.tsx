@@ -2,7 +2,16 @@
 import { useEffect, useMemo, useRef, useState } from "react";
 import { BarChart, Bar, XAxis, YAxis, Tooltip, ResponsiveContainer, LineChart, Line, CartesianGrid, Legend } from "recharts";
 import { FlightSpinner } from "./FlightLoader";
-import { Card, Stat, SectionLabel } from "./AdminShared";
+import { Card, Stat, SectionLabel, type Accent } from "./AdminShared";
+import { buildPageVisitByEmail } from "@/lib/page-visit-tracking";
+import {
+  istDateStr, isSearchView, buildActiveUserRows, buildSearchedUserRows, buildContentEngagementRows,
+  buildPageVisitRows, buildJobApplyRows, buildCompanyPacketOpenRows,
+} from "@/lib/tracking-tables";
+import {
+  type ResumeEvent, buildResumeOpens, buildResumeClicks, buildResumeFilters, buildResumeDownloads,
+  buildResumeReviewClicks, resumeStats, resumeTimelineRows,
+} from "@/lib/resume-tracking";
 
 type Stats = {
   views: { user_email: string; company: string | null; role: string | null; program: string | null; topic: string | null; path: string | null; created_at: string }[];
@@ -14,6 +23,8 @@ type Stats = {
   feedback: { user_email: string; platform_rating: number; usefulness_rating: number; feedback_text: string | null; created_at: string }[];
   jobApplies: { user_email: string; job_id: number; created_at: string }[];
   companyPacketOpens: { user_email: string; slug: string; created_at: string }[];
+  // Every learner action on the Resumes pages (see lib/resume-tracking.ts).
+  resumeEvents?: ResumeEvent[];
   // Exact per-IST-day unique counts computed in the database (null until
   // supabase/add_admin_daily_activity.sql has been run).
   daily?: DailyRow[] | null;
@@ -51,9 +62,6 @@ const RANGES = [
 // local time. app/api/admin/stats/route.ts uses the same IST anchoring for
 // its since/until window, so the two stay in sync.
 const IST_OFFSET = "+05:30";
-function istDateStr(input: string | number | Date): string {
-  return new Date(input).toLocaleDateString("en-CA", { timeZone: "Asia/Kolkata" });
-}
 const todayStr = () => istDateStr(new Date());
 const daysAgoStr = (n: number) => istDateStr(Date.now() - n * 86400_000);
 
@@ -75,14 +83,6 @@ function downloadCsv(filename: string, rows: (string | number)[][]) {
   URL.revokeObjectURL(url);
 }
 
-// A page_views row is either a genuine search/filter-narrow event (has
-// company/role/topic set — Questions and Assignments only ever fire /api/track
-// this way) or a bare page-visit ping (Jobs and Company Packets fire this on
-// every mount, path set, nothing else). "Daily searches" must only count the
-// former, or Jobs/Company Packets visits silently inflate that chart.
-function isSearchView(v: Stats["views"][number]) {
-  return !!(v.company || v.role || v.topic);
-}
 
 // Pure builders so the same grouping logic can run both against the live
 // on-screen `data` (via useMemo below) and against a one-off fetch scoped to
@@ -170,6 +170,7 @@ function allKnownEmails(data: Stats): string[] {
   data.videoViews.forEach(v => s.add(v.user_email));
   data.jobApplies.forEach(v => s.add(v.user_email));
   data.companyPacketOpens.forEach(v => s.add(v.user_email));
+  (data.resumeEvents ?? []).forEach(v => s.add(v.user_email));
   data.feedback.forEach(v => s.add(v.user_email));
   return Array.from(s).sort();
 }
@@ -201,6 +202,7 @@ function buildLearnerTimeline(data: Stats, email: string): TimelineRow[] {
     rows.push({ when: v.created_at, type: "Applied to job", detail: `Job #${v.job_id}` }));
   data.companyPacketOpens.filter(v => v.user_email.toLowerCase() === e).forEach(v =>
     rows.push({ when: v.created_at, type: "Opened company packet", detail: v.slug }));
+  rows.push(...resumeTimelineRows(data.resumeEvents ?? [], email));
   data.feedback.filter(v => v.user_email.toLowerCase() === e).forEach(v =>
     rows.push({ when: v.created_at, type: "Feedback", detail: `Platform ${v.platform_rating}/5, Usefulness ${v.usefulness_rating}/5${v.feedback_text ? ` — "${v.feedback_text}"` : ""}` }));
   return rows.sort((a, b) => b.when.localeCompare(a.when));
@@ -234,57 +236,6 @@ function buildPacketPerUser(packetViews: Stats["packetViews"]) {
   return Array.from(m.entries()).map(([email, e]) => ({ email, ...e })).sort((a, b) => b.packetsRead - a.packetsRead);
 }
 
-// Raw (email, date) rows behind a chart's daily unique-count line — "who was
-// counted on which day," not just the aggregate. `dedupe` collapses multiple
-// same-day events from one email to a single row, since the chart itself
-// counts a learner once per day no matter how many times they did the thing.
-function dailyRows<T>(rows: T[], emailFn: (r: T) => string, dateFn: (r: T) => string): { email: string; date: string }[] {
-  const seen = new Set<string>();
-  const out: { email: string; date: string }[] = [];
-  for (const r of rows) {
-    const email = emailFn(r), date = istDateStr(dateFn(r));
-    const k = `${email}|${date}`;
-    if (seen.has(k)) continue;
-    seen.add(k);
-    out.push({ email, date });
-  }
-  return out.sort((a, b) => b.date.localeCompare(a.date) || a.email.localeCompare(b.email));
-}
-function buildActiveUserRows(sessions: Stats["sessions"]) {
-  return dailyRows(sessions, s => s.user_email, s => s.started_at);
-}
-function buildSearchedUserRows(views: Stats["views"]) {
-  return dailyRows(views.filter(isSearchView), v => v.user_email, v => v.created_at);
-}
-function buildContentEngagementRows(packetViews: Stats["packetViews"], videoViews: Stats["videoViews"]) {
-  const packets = dailyRows(packetViews, v => v.user_email, v => v.created_at).map(r => ({ ...r, type: "Read a packet" }));
-  const videos  = dailyRows(videoViews,  v => v.user_email, v => v.created_at).map(r => ({ ...r, type: "Watched a video" }));
-  return [...packets, ...videos].sort((a, b) => b.date.localeCompare(a.date) || a.email.localeCompare(b.email));
-}
-function buildPageVisitRows(views: Stats["views"], path: string) {
-  return dailyRows(views.filter(v => v.path === path), v => v.user_email, v => v.created_at);
-}
-// Same per-learner-per-day dedup as dailyRows, plus a third key (job/packet)
-// so re-clicking the same item twice in a day collapses to one row, matching
-// the jobApplyClicks/companyPacketOpensUnique stat tiles exactly.
-function dailyItemRows<T>(rows: T[], emailFn: (r: T) => string, itemFn: (r: T) => string, dateFn: (r: T) => string): { email: string; item: string; date: string }[] {
-  const seen = new Set<string>();
-  const out: { email: string; item: string; date: string }[] = [];
-  for (const r of rows) {
-    const email = emailFn(r), item = itemFn(r), date = istDateStr(dateFn(r));
-    const k = `${email}|${item}|${date}`;
-    if (seen.has(k)) continue;
-    seen.add(k);
-    out.push({ email, item, date });
-  }
-  return out.sort((a, b) => b.date.localeCompare(a.date) || a.email.localeCompare(b.email));
-}
-function buildJobApplyRows(jobApplies: Stats["jobApplies"]) {
-  return dailyItemRows(jobApplies, a => a.user_email, a => String(a.job_id), a => a.created_at);
-}
-function buildCompanyPacketOpenRows(companyPacketOpens: Stats["companyPacketOpens"]) {
-  return dailyItemRows(companyPacketOpens, o => o.user_email, o => o.slug, o => o.created_at);
-}
 
 async function fetchStatsWindow(from: string, to: string): Promise<Stats | null> {
   const params = new URLSearchParams({ range: "custom", from, to });
@@ -352,6 +303,52 @@ function ExportButton({
   );
 }
 
+// One Resumes table: search box + CSV export + scrolling table, same look as the
+// Packets / Assignments / Videos cards. `rows` are already formatted cells.
+type ResumeCol = { label: string; kind?: "num" | "time" };
+function ResumeCard({
+  title, accent, query, onQuery, placeholder, columns, rows, empty, from, to, onExport,
+}: {
+  title: string; accent: Accent; query: string; onQuery: (v: string) => void; placeholder: string;
+  columns: ResumeCol[]; rows: (string | number)[][]; empty: string;
+  from: string; to: string; onExport: (from: string, to: string) => Promise<void>;
+}) {
+  return (
+    <Card title={`${title} (${rows.length})`} accent={accent}>
+      <div className="mb-4 flex flex-wrap items-center gap-2">
+        <input
+          value={query}
+          onChange={e => onQuery(e.target.value)}
+          placeholder={placeholder}
+          className="min-w-[220px] flex-1 rounded-xl border border-edge bg-panel2 px-3 py-2 text-sm text-text placeholder:text-mute/60 focus:border-acad focus:outline-none"
+        />
+        <ExportButton defaultFrom={from} defaultTo={to} onExport={onExport} />
+      </div>
+      <div className="max-h-[420px] overflow-auto">
+        <table className="w-full text-sm">
+          <thead className="sticky top-0 bg-panel text-left font-mono text-[11px] uppercase tracking-widest text-mute">
+            <tr>{columns.map(c => <th key={c.label} className={`py-2 pr-3 ${c.kind === "num" ? "text-right" : ""}`}>{c.label}</th>)}</tr>
+          </thead>
+          <tbody className="divide-y divide-edge/60">
+            {rows.length === 0 && <tr><td colSpan={columns.length} className="py-4 text-mute">{empty}</td></tr>}
+            {rows.map((r, i) => (
+              <tr key={i}>
+                {r.map((cell, j) => {
+                  const k = columns[j].kind;
+                  return (
+                    <td key={j} className={`py-2 pr-3 ${k === "num" ? "text-right font-mono text-xs" : k === "time" ? "whitespace-nowrap font-mono text-xs text-mute" : j === 0 ? "" : "text-mute"}`}>{cell}</td>
+                  );
+                })}
+              </tr>
+            ))}
+          </tbody>
+        </table>
+      </div>
+    </Card>
+  );
+}
+const fmtTime = (iso: string) => new Date(iso).toLocaleString();
+
 export default function AdminTracking() {
   const [range, setRange] = useState<"day" | "week" | "15d" | "month" | "custom">("week");
   const [customFrom, setCustomFrom] = useState(daysAgoStr(7));
@@ -365,6 +362,12 @@ export default function AdminTracking() {
   const [assignmentQuery, setAssignmentQuery] = useState("");
   const [videoQuery, setVideoQuery] = useState("");
   const [feedbackQuery, setFeedbackQuery] = useState("");
+  const [trendingVisitQ, setTrendingVisitQ] = useState("");
+  const [resumeOpenQ, setResumeOpenQ] = useState("");
+  const [resumeClickQ, setResumeClickQ] = useState("");
+  const [resumeFilterQ, setResumeFilterQ] = useState("");
+  const [resumeDownloadQ, setResumeDownloadQ] = useState("");
+  const [resumeReviewQ, setResumeReviewQ] = useState("");
   const [lookupEmail, setLookupEmail] = useState("");
 
   // Only the newest request may write state: switching 7d -> 30d quickly must
@@ -590,6 +593,46 @@ export default function AdminTracking() {
     [data]
   );
 
+  // Trending roles page visits (page_views rows with path "/packets", written
+  // by PacketsView): tile = unique per learner per day; table = per learner.
+  const trendingVisits = useMemo(
+    () => data ? uniqueDailyCount(data.views.filter(v => v.path === "/packets"), v => `${v.user_email}|${istDateStr(v.created_at)}`) : 0,
+    [data]
+  );
+  const trendingVisitRows = useMemo(() => {
+    const qL = trendingVisitQ.trim().toLowerCase();
+    const rows = data ? buildPageVisitByEmail(data.views, "/packets") : [];
+    return qL ? rows.filter(r => r.email.toLowerCase().includes(qL)) : rows;
+  }, [data, trendingVisitQ]);
+
+  // Resumes: five tables over the same event stream, each search-filterable.
+  const resumeEvents = useMemo(() => data?.resumeEvents ?? [], [data]);
+  const resumeTotals = useMemo(() => resumeStats(resumeEvents), [resumeEvents]);
+  const matches = (q: string, ...cells: string[]) => {
+    const qL = q.trim().toLowerCase();
+    return !qL || cells.some(c => c.toLowerCase().includes(qL));
+  };
+  const resumeOpenRows = useMemo(
+    () => buildResumeOpens(resumeEvents).filter(r => matches(resumeOpenQ, r.email, r.resume)),
+    [resumeEvents, resumeOpenQ]
+  );
+  const resumeClickRows = useMemo(
+    () => buildResumeClicks(resumeEvents).filter(r => matches(resumeClickQ, r.email, r.resume)),
+    [resumeEvents, resumeClickQ]
+  );
+  const resumeFilterRows = useMemo(
+    () => buildResumeFilters(resumeEvents).filter(r => matches(resumeFilterQ, r.email, r.programme, r.experience, r.background)),
+    [resumeEvents, resumeFilterQ]
+  );
+  const resumeDownloadRows = useMemo(
+    () => buildResumeDownloads(resumeEvents).filter(r => matches(resumeDownloadQ, r.email, r.resume)),
+    [resumeEvents, resumeDownloadQ]
+  );
+  const resumeReviewRows = useMemo(
+    () => buildResumeReviewClicks(resumeEvents).filter(r => matches(resumeReviewQ, r.email, r.resume)),
+    [resumeEvents, resumeReviewQ]
+  );
+
   const knownEmails = useMemo(() => data ? allKnownEmails(data) : [], [data]);
   const learnerTimeline = useMemo(
     () => data && lookupEmail.trim() ? buildLearnerTimeline(data, lookupEmail) : [],
@@ -684,6 +727,65 @@ export default function AdminTracking() {
     if (!d) { alert("Couldn't load data for that range."); return; }
     const rows: (string | number)[][] = [["Email", "Packet", "Date"], ...buildCompanyPacketOpenRows(d.companyPacketOpens).map(r => [r.email, r.item, r.date])];
     downloadCsv(`admin-company-packets-opens-${from}_to_${to}.csv`, rows);
+  };
+
+  // Same columns as the sheet tab "Trending Roles Visits" (sync_sheet.py build_page_visits).
+  const exportTrendingVisitsCsv = async (from: string, to: string) => {
+    const d = await fetchStatsWindow(from, to);
+    if (!d) { alert("Couldn't load data for that range."); return; }
+    const rows: (string | number)[][] = [
+      ["Email", "First visit", "Last visit", "Count"],
+      ...buildPageVisitByEmail(d.views, "/packets").map(r => [r.email, fmtTime(r.first), fmtTime(r.last), r.count]),
+    ];
+    downloadCsv(`admin-trending-roles-visits-${from}_to_${to}.csv`, rows);
+  };
+
+  // Resumes exports: same builders and column order as the cards and as the
+  // tracking-sheet tabs (sync/sync_sheet.py build_resume_*).
+  const exportResumeOpensCsv = async (from: string, to: string) => {
+    const d = await fetchStatsWindow(from, to);
+    if (!d) { alert("Couldn't load data for that range."); return; }
+    const rows: (string | number)[][] = [
+      ["Email", "Resume", "First opened", "Last opened", "Count"],
+      ...buildResumeOpens(d.resumeEvents ?? []).map(r => [r.email, r.resume, fmtTime(r.first), fmtTime(r.last), r.count]),
+    ];
+    downloadCsv(`admin-resume-opens-${from}_to_${to}.csv`, rows);
+  };
+  const exportResumeClicksCsv = async (from: string, to: string) => {
+    const d = await fetchStatsWindow(from, to);
+    if (!d) { alert("Couldn't load data for that range."); return; }
+    const rows: (string | number)[][] = [
+      ["Email", "Resume", "Notes opened", "See it in this resume clicks", "Last click"],
+      ...buildResumeClicks(d.resumeEvents ?? []).map(r => [r.email, r.resume, r.notes, r.examples, fmtTime(r.last)]),
+    ];
+    downloadCsv(`admin-resume-clicks-${from}_to_${to}.csv`, rows);
+  };
+  const exportResumeFiltersCsv = async (from: string, to: string) => {
+    const d = await fetchStatsWindow(from, to);
+    if (!d) { alert("Couldn't load data for that range."); return; }
+    const rows: (string | number)[][] = [
+      ["Email", "Programme", "Experience", "Background", "First applied", "Last applied", "Count"],
+      ...buildResumeFilters(d.resumeEvents ?? []).map(r => [r.email, r.programme, r.experience, r.background, fmtTime(r.first), fmtTime(r.last), r.count]),
+    ];
+    downloadCsv(`admin-resume-filters-${from}_to_${to}.csv`, rows);
+  };
+  const exportResumeDownloadsCsv = async (from: string, to: string) => {
+    const d = await fetchStatsWindow(from, to);
+    if (!d) { alert("Couldn't load data for that range."); return; }
+    const rows: (string | number)[][] = [
+      ["Email", "Resume", "First downloaded", "Last downloaded", "Count"],
+      ...buildResumeDownloads(d.resumeEvents ?? []).map(r => [r.email, r.resume, fmtTime(r.first), fmtTime(r.last), r.count]),
+    ];
+    downloadCsv(`admin-resume-downloads-${from}_to_${to}.csv`, rows);
+  };
+  const exportResumeReviewClicksCsv = async (from: string, to: string) => {
+    const d = await fetchStatsWindow(from, to);
+    if (!d) { alert("Couldn't load data for that range."); return; }
+    const rows: (string | number)[][] = [
+      ["Email", "Resume", "Header button", "End-of-page button", "Went to Scaler dashboard", "Last click"],
+      ...buildResumeReviewClicks(d.resumeEvents ?? []).map(r => [r.email, r.resume, r.header, r.end, r.dashboard, fmtTime(r.last)]),
+    ];
+    downloadCsv(`admin-resume-review-clicks-${from}_to_${to}.csv`, rows);
   };
 
   const exportLearnerTimelineCsv = async (from: string, to: string) => {
@@ -837,7 +939,14 @@ export default function AdminTracking() {
           and block clicks until the new ones land, so stale data is never
           mistaken for the newly selected range. */}
       <div className={`relative space-y-10 transition-opacity ${loading ? "pointer-events-none opacity-40" : ""}`} aria-busy={loading}>
-      <SectionLabel accent="acad">Overview</SectionLabel>
+      <nav aria-label="Jump to a section" className="-mt-4 flex flex-wrap items-center gap-1.5">
+        <span className="mr-1 font-mono text-[11px] uppercase tracking-widest text-mute">Jump to</span>
+        {[["sec-overview","Overview"],["sec-questions","Questions"],["sec-assignments","Assignments"],["sec-trending","Trending roles"],["sec-packets","Packets"],["sec-hirings","Open Hirings"],["sec-resumes","Resumes"],["sec-lookup","Learner Lookup"],["sec-users","Users"],["sec-feedback","Feedback"]].map(([id, label]) => (
+          <a key={id} href={`#${id}`} className="rounded-full border border-edge px-3 py-1 text-sm text-mute transition hover:border-text/40 hover:text-text">{label}</a>
+        ))}
+      </nav>
+
+      <SectionLabel accent="acad" id="sec-overview" note="Daily activity across the whole app. A learner is counted once per day for each chart.">Overview</SectionLabel>
 
       <section className="grid grid-cols-1 gap-4 lg:grid-cols-2">
         <Card title="Daily Visits (Opened App)" accent="acad"
@@ -883,7 +992,7 @@ export default function AdminTracking() {
             </LineChart>
           </ResponsiveContainer>
         </Card>
-        <Card title="Packets opened — by unique user (top 20)" accent="devops"
+        <Card title="Trending roles — packets opened, top learners" accent="devops"
           action={<ExportButton defaultFrom={customFrom} defaultTo={customTo} onExport={exportPacketsByUserCsv} />}
         >
           <ResponsiveContainer width="100%" height={220}>
@@ -912,7 +1021,7 @@ export default function AdminTracking() {
             </LineChart>
           </ResponsiveContainer>
         </Card>
-        <Card title="Daily visits — Company Packets" accent="aiml"
+        <Card title="Daily visits — Packets page" accent="aiml"
           action={<ExportButton defaultFrom={customFrom} defaultTo={customTo} onExport={exportCompanyPacketsVisitsCsv} />}
         >
           <ResponsiveContainer width="100%" height={220}>
@@ -921,13 +1030,13 @@ export default function AdminTracking() {
               <XAxis dataKey="day" stroke="rgb(var(--mute))" fontSize={11} />
               <YAxis stroke="rgb(var(--mute))" fontSize={11} allowDecimals={false} />
               <Tooltip contentStyle={{ background: "rgb(var(--panel))", border: "1px solid rgb(var(--edge))", borderRadius: 8, color: "rgb(var(--text))" }} />
-              <Line type="linear" dataKey="companyPacketsUsers" name="Visited Company Packets" stroke="rgb(var(--aiml))" strokeWidth={2} dot={{ r: 2 }} />
+              <Line type="linear" dataKey="companyPacketsUsers" name="Visited Packets page" stroke="rgb(var(--aiml))" strokeWidth={2} dot={{ r: 2 }} />
             </LineChart>
           </ResponsiveContainer>
         </Card>
       </section>
 
-      <SectionLabel accent="acad">Questions</SectionLabel>
+      <SectionLabel accent="acad" id="sec-questions" note="Nav tab “Questions”. Counted when a learner narrows to a company + role or a topic; just opening the page isn’t counted.">Questions</SectionLabel>
 
       <section className="grid grid-cols-1 gap-3 sm:grid-cols-2">
         <Stat label="Total visits (unique, per learner per day)" value={questionsVisits} accent="acad"
@@ -1017,54 +1126,7 @@ export default function AdminTracking() {
         </div>
       </Card>
 
-      <SectionLabel accent="aiml">Packets</SectionLabel>
-
-      <section className="grid grid-cols-1 gap-3 sm:grid-cols-2">
-        <Stat label="Total visits (unique, per learner per day)" value={packetsVisits} accent="aiml"
-          definition="Counts an actual packet opened — browsing the list without opening one isn't counted." />
-
-      </section>
-
-      <Card title={`Packet reads — by learner (${packetByEmail.length})`} accent="aiml">
-        <div className="mb-4 flex flex-wrap items-center gap-2">
-          <input
-            value={packetQuery}
-            onChange={e => setPacketQuery(e.target.value)}
-            placeholder="filter by email or packet..."
-            className="min-w-[220px] flex-1 rounded-xl border border-edge bg-panel2 px-3 py-2 text-sm text-text placeholder:text-mute/60 focus:border-acad focus:outline-none"
-          />
-          <ExportButton defaultFrom={customFrom} defaultTo={customTo} onExport={exportPacketBreakdownCsv} />
-        </div>
-        <div className="max-h-[420px] overflow-y-auto">
-          <table className="w-full text-sm">
-            <thead className="sticky top-0 bg-panel text-left font-mono text-[11px] uppercase tracking-widest text-mute">
-              <tr>
-                <th className="py-2">Email</th>
-                <th className="py-2">Packet</th>
-                <th className="py-2">First read</th>
-                <th className="py-2">Last read</th>
-                <th className="py-2 text-right">Count</th>
-              </tr>
-            </thead>
-            <tbody className="divide-y divide-edge/60">
-              {packetByEmail.length === 0 && (
-                <tr><td colSpan={5} className="py-4 text-mute">No packet reads yet in this window.</td></tr>
-              )}
-              {packetByEmail.map(r => (
-                <tr key={`${r.email}|${r.packet}`}>
-                  <td className="py-2">{r.email}</td>
-                  <td className="py-2 text-mute">{r.packet}</td>
-                  <td className="py-2 font-mono text-xs text-mute">{new Date(r.first).toLocaleString()}</td>
-                  <td className="py-2 font-mono text-xs text-mute">{new Date(r.last).toLocaleString()}</td>
-                  <td className="py-2 text-right font-mono text-xs">{r.count}</td>
-                </tr>
-              ))}
-            </tbody>
-          </table>
-        </div>
-      </Card>
-
-      <SectionLabel accent="dsml">Assignments</SectionLabel>
+      <SectionLabel accent="dsml" id="sec-assignments" note="Nav tab “Assignments”. Counted when a learner narrows to a company + role, and each assignment opened.">Assignments</SectionLabel>
 
       <section className="grid grid-cols-1 gap-3 sm:grid-cols-2">
         <Stat label="Total visits (unique, per learner per day)" value={assignmentsVisits} accent="dsml"
@@ -1111,15 +1173,68 @@ export default function AdminTracking() {
         </div>
       </Card>
 
-      <SectionLabel accent="devops">Videos</SectionLabel>
+      <SectionLabel accent="aiml" id="sec-trending" note="Nav tab “Prepare for Trending roles”. Counts page visits, packets opened and video links clicked. Not tracked: how far a learner scrolled inside a packet, and video watch time (videos open on external sites).">Trending roles</SectionLabel>
 
-      <section className="grid grid-cols-1 gap-3 sm:grid-cols-2">
-        <Stat label="Total visits (unique, per learner per day)" value={videosVisits} accent="devops"
-          definition="Counts an actual video opened — browsing the list without opening one isn't counted." />
-
+      <section className="grid grid-cols-1 gap-3 sm:grid-cols-3">
+        <Stat label="Opened the page (unique, per learner per day)" value={trendingVisits} accent="aiml"
+          action={<ExportButton defaultFrom={customFrom} defaultTo={customTo} onExport={exportTrendingVisitsCsv}
+            label="CSV" className="rounded-lg border border-edge px-2 py-1 text-[11px] text-mute hover:text-text" />}
+          definition="Counts each learner who opened the Trending roles list, once per day." />
+        <Stat label="Opened a packet (unique, per learner per day)" value={packetsVisits} accent="aiml"
+          definition="Counts an actual packet opened — browsing the list without opening one isn't counted." />
+        <Stat label="Opened a video link (unique, per learner per day)" value={videosVisits} accent="devops"
+          definition="Counts a click on a video link — we can't see whether it was watched, or for how long." />
       </section>
 
-      <Card title={`Videos watched — by learner (${videoByEmail.length})`} accent="devops">
+      <ResumeCard
+        title="Who opened the Trending roles page" accent="aiml"
+        query={trendingVisitQ} onQuery={setTrendingVisitQ} placeholder="filter by email..."
+        from={customFrom} to={customTo} onExport={exportTrendingVisitsCsv}
+        columns={[{ label: "Email" }, { label: "First visit", kind: "time" }, { label: "Last visit", kind: "time" }, { label: "Visits", kind: "num" }]}
+        rows={trendingVisitRows.map(r => [r.email, fmtTime(r.first), fmtTime(r.last), r.count])}
+        empty="Nobody has opened the Trending roles page in this window yet (tracking started with this release)."
+      />
+
+      <Card title={`Who opened which packet (${packetByEmail.length})`} accent="aiml">
+        <div className="mb-4 flex flex-wrap items-center gap-2">
+          <input
+            value={packetQuery}
+            onChange={e => setPacketQuery(e.target.value)}
+            placeholder="filter by email or packet..."
+            className="min-w-[220px] flex-1 rounded-xl border border-edge bg-panel2 px-3 py-2 text-sm text-text placeholder:text-mute/60 focus:border-acad focus:outline-none"
+          />
+          <ExportButton defaultFrom={customFrom} defaultTo={customTo} onExport={exportPacketBreakdownCsv} />
+        </div>
+        <div className="max-h-[420px] overflow-y-auto">
+          <table className="w-full text-sm">
+            <thead className="sticky top-0 bg-panel text-left font-mono text-[11px] uppercase tracking-widest text-mute">
+              <tr>
+                <th className="py-2">Email</th>
+                <th className="py-2">Packet</th>
+                <th className="py-2">First read</th>
+                <th className="py-2">Last read</th>
+                <th className="py-2 text-right">Count</th>
+              </tr>
+            </thead>
+            <tbody className="divide-y divide-edge/60">
+              {packetByEmail.length === 0 && (
+                <tr><td colSpan={5} className="py-4 text-mute">No packet reads yet in this window.</td></tr>
+              )}
+              {packetByEmail.map(r => (
+                <tr key={`${r.email}|${r.packet}`}>
+                  <td className="py-2">{r.email}</td>
+                  <td className="py-2 text-mute">{r.packet}</td>
+                  <td className="py-2 font-mono text-xs text-mute">{new Date(r.first).toLocaleString()}</td>
+                  <td className="py-2 font-mono text-xs text-mute">{new Date(r.last).toLocaleString()}</td>
+                  <td className="py-2 text-right font-mono text-xs">{r.count}</td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        </div>
+      </Card>
+
+      <Card title={`Video links opened — by learner (${videoByEmail.length})`} accent="devops">
         <div className="mb-4 flex flex-wrap items-center gap-2">
           <input
             value={videoQuery}
@@ -1158,20 +1273,7 @@ export default function AdminTracking() {
         </div>
       </Card>
 
-      <SectionLabel accent="topic">Open Hirings</SectionLabel>
-
-      <section className="grid grid-cols-1 gap-3 sm:grid-cols-2">
-        <Stat label="Total visits (unique, per learner per day)" value={jobsVisits} accent="topic"
-          action={<ExportButton defaultFrom={customFrom} defaultTo={customTo} onExport={exportJobsVisitsCsv}
-            label="CSV" className="rounded-lg border border-edge px-2 py-1 text-[11px] text-mute hover:text-text" />}
-          definition="Counts every page open, once per learner per day — no action required, unlike Questions/Assignments/Packets/Videos." />
-        <Stat label="Total clicks on Apply (unique, per job per learner per day)" value={jobApplyClicks} accent="topic"
-          action={<ExportButton defaultFrom={customFrom} defaultTo={customTo} onExport={exportJobApplyClicksCsv}
-            label="CSV" className="rounded-lg border border-edge px-2 py-1 text-[11px] text-mute hover:text-text" />}
-          definition="Counts each distinct job a learner clicks Apply on, once per job per learner per day — re-clicking the same job same day isn't counted again." />
-      </section>
-
-      <SectionLabel accent="aiml">Company Packets</SectionLabel>
+      <SectionLabel accent="aiml" id="sec-packets" note="Nav tab “Packets” (company packets). Counts page visits and “Open Link” clicks.">Packets</SectionLabel>
 
       <section className="grid grid-cols-1 gap-3 sm:grid-cols-2">
         <Stat label="Total visits (unique, per learner per day)" value={companyPacketsVisits} accent="aiml"
@@ -1184,7 +1286,78 @@ export default function AdminTracking() {
           definition="Counts each distinct packet a learner opens via Open Link, once per packet per learner per day." />
       </section>
 
-      <SectionLabel accent="acad">Learner Lookup</SectionLabel>
+      <SectionLabel accent="topic" id="sec-hirings" note="Open Hirings page. Counts page visits and Apply clicks.">Open Hirings</SectionLabel>
+
+      <section className="grid grid-cols-1 gap-3 sm:grid-cols-2">
+        <Stat label="Total visits (unique, per learner per day)" value={jobsVisits} accent="topic"
+          action={<ExportButton defaultFrom={customFrom} defaultTo={customTo} onExport={exportJobsVisitsCsv}
+            label="CSV" className="rounded-lg border border-edge px-2 py-1 text-[11px] text-mute hover:text-text" />}
+          definition="Counts every page open, once per learner per day — no action required, unlike Questions/Assignments/Packets/Videos." />
+        <Stat label="Total clicks on Apply (unique, per job per learner per day)" value={jobApplyClicks} accent="topic"
+          action={<ExportButton defaultFrom={customFrom} defaultTo={customTo} onExport={exportJobApplyClicksCsv}
+            label="CSV" className="rounded-lg border border-edge px-2 py-1 text-[11px] text-mute hover:text-text" />}
+          definition="Counts each distinct job a learner clicks Apply on, once per job per learner per day — re-clicking the same job same day isn't counted again." />
+      </section>
+
+      <SectionLabel accent="acad" id="sec-resumes" note="Nav tab “Resumes”. Counts opens, note clicks, filters, PDF downloads and Book a resume review clicks.">Resumes</SectionLabel>
+
+      <section className="grid grid-cols-2 gap-3 lg:grid-cols-3">
+        <Stat label="Learners who opened a resume" value={resumeTotals.openers} accent="acad"
+          definition="Distinct learners who opened at least one model resume in this window." />
+        <Stat label="Resume opens" value={resumeTotals.opens} accent="acad"
+          definition="Every time a resume page was opened (same learner, same resume, counts each time)." />
+        <Stat label="Notes opened" value={resumeTotals.notes} accent="dsml"
+          definition="Clicks on a numbered line or note to read why it works." />
+        <Stat label="Filters applied" value={resumeTotals.filters} accent="aiml"
+          definition="Each change of Programme, Experience or Background on the Resumes list." />
+        <Stat label="PDF downloads" value={resumeTotals.downloads} accent="devops"
+          definition="Times a learner clicked Download PDF and got the file." />
+        <Stat label="Book a resume review clicks" value={resumeTotals.reviewClicks} accent="topic"
+          definition={`Clicks on the button (header or end of page). ${resumeTotals.dashboardClicks} of them went on to the Scaler dashboard.`} />
+      </section>
+
+      <ResumeCard
+        title="Who opened what" accent="acad"
+        query={resumeOpenQ} onQuery={setResumeOpenQ} placeholder="filter by email or resume..."
+        from={customFrom} to={customTo} onExport={exportResumeOpensCsv}
+        columns={[{ label: "Email" }, { label: "Resume" }, { label: "First opened", kind: "time" }, { label: "Last opened", kind: "time" }, { label: "Count", kind: "num" }]}
+        rows={resumeOpenRows.map(r => [r.email, r.resume, fmtTime(r.first), fmtTime(r.last), r.count])}
+        empty="No resumes opened yet in this window."
+      />
+      <ResumeCard
+        title="Clicks on resumes — by learner" accent="dsml"
+        query={resumeClickQ} onQuery={setResumeClickQ} placeholder="filter by email or resume..."
+        from={customFrom} to={customTo} onExport={exportResumeClicksCsv}
+        columns={[{ label: "Email" }, { label: "Resume" }, { label: "Notes opened", kind: "num" }, { label: "See it in this resume", kind: "num" }, { label: "Last click", kind: "time" }]}
+        rows={resumeClickRows.map(r => [r.email, r.resume, r.notes, r.examples, fmtTime(r.last)])}
+        empty="No clicks on resume lines yet in this window."
+      />
+      <ResumeCard
+        title="Filters applied by learners" accent="aiml"
+        query={resumeFilterQ} onQuery={setResumeFilterQ} placeholder="filter by email, programme, experience, background..."
+        from={customFrom} to={customTo} onExport={exportResumeFiltersCsv}
+        columns={[{ label: "Email" }, { label: "Programme" }, { label: "Experience" }, { label: "Background" }, { label: "First applied", kind: "time" }, { label: "Last applied", kind: "time" }, { label: "Count", kind: "num" }]}
+        rows={resumeFilterRows.map(r => [r.email, r.programme, r.experience, r.background, fmtTime(r.first), fmtTime(r.last), r.count])}
+        empty="No filters applied yet in this window."
+      />
+      <ResumeCard
+        title="Who downloaded a PDF" accent="devops"
+        query={resumeDownloadQ} onQuery={setResumeDownloadQ} placeholder="filter by email or resume..."
+        from={customFrom} to={customTo} onExport={exportResumeDownloadsCsv}
+        columns={[{ label: "Email" }, { label: "Resume" }, { label: "First downloaded", kind: "time" }, { label: "Last downloaded", kind: "time" }, { label: "Count", kind: "num" }]}
+        rows={resumeDownloadRows.map(r => [r.email, r.resume, fmtTime(r.first), fmtTime(r.last), r.count])}
+        empty="No PDF downloads yet in this window."
+      />
+      <ResumeCard
+        title="Who clicked Book a resume review" accent="topic"
+        query={resumeReviewQ} onQuery={setResumeReviewQ} placeholder="filter by email or resume..."
+        from={customFrom} to={customTo} onExport={exportResumeReviewClicksCsv}
+        columns={[{ label: "Email" }, { label: "Resume" }, { label: "Header button", kind: "num" }, { label: "End-of-page button", kind: "num" }, { label: "Went to dashboard", kind: "num" }, { label: "Last click", kind: "time" }]}
+        rows={resumeReviewRows.map(r => [r.email, r.resume, r.header, r.end, r.dashboard, fmtTime(r.last)])}
+        empty="No review-button clicks yet in this window."
+      />
+
+      <SectionLabel accent="acad" id="sec-lookup" note="Everything one learner did in this window, in order — pick an email to see it.">Learner Lookup</SectionLabel>
 
       <Card title="Search a learner" accent="acad"
         action={learnerTimeline.length > 0 ? <ExportButton defaultFrom={customFrom} defaultTo={customTo} onExport={exportLearnerTimelineCsv} /> : undefined}
@@ -1227,7 +1400,7 @@ export default function AdminTracking() {
         )}
       </Card>
 
-      <SectionLabel accent="acad">Users</SectionLabel>
+      <SectionLabel accent="acad" id="sec-users" note="Every learner active in this window, with their number of views and last activity.">Users</SectionLabel>
 
       <Card title={`Users (${perUser.length})`} accent="dsml">
         <div className="overflow-x-auto">
@@ -1248,7 +1421,7 @@ export default function AdminTracking() {
         </div>
       </Card>
 
-      <SectionLabel accent="acad">Feedback</SectionLabel>
+      <SectionLabel accent="acad" id="sec-feedback" note="Ratings and comments from the “Share feedback” button.">Feedback</SectionLabel>
 
       <Card title={`Learner feedback (${feedbackRows.length})`} accent="acad">
         <div className="mb-4 grid grid-cols-2 gap-3 sm:max-w-sm">
