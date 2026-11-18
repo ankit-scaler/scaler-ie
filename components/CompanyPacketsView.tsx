@@ -3,6 +3,7 @@ import { useEffect, useMemo, useState } from "react";
 import { motion } from "framer-motion";
 import Monogram, { Tone } from "./Monogram";
 import RequestPacketButton from "./RequestPacketButton";
+import MultiSelect from "./MultiSelect";
 import { PacketListItem, TRACK_LABELS, YOE_LABELS, Track, YoeBucket } from "@/lib/packets-db";
 
 const PAGE = 30;
@@ -14,8 +15,9 @@ const PACKET_GENERATOR_BASE = "https://interview-experiences-packets-creat.verce
 const TONE: Record<Track, Tone> = { ACADEMY: "acad", DEVOPS: "devops", AIML: "aiml", DSML: "dsml" };
 const TRACK_TEXT: Record<Track, string> = { ACADEMY: "text-acad", DEVOPS: "text-devops", AIML: "text-aiml", DSML: "text-dsml" };
 
-type State = { track: "All" | Track; yoe: "All" | YoeBucket; company: string; role: string; q: string };
-const DEFAULT_STATE: State = { track: "All", yoe: "All", company: "All", role: "All", q: "" };
+// role is multi-select (same searchable dropdown as Questions / Assignments): empty = All.
+type State = { track: "All" | Track; yoe: "All" | YoeBucket; company: string; role: string[]; q: string };
+const DEFAULT_STATE: State = { track: "All", yoe: "All", company: "All", role: [], q: "" };
 
 export default function CompanyPacketsView({ initial }: { initial: PacketListItem[] }) {
   const [state, setState] = useState<State>(DEFAULT_STATE);
@@ -55,7 +57,7 @@ export default function CompanyPacketsView({ initial }: { initial: PacketListIte
   );
   const roles = useMemo(() => {
     const scope = state.company === "All" ? scopedForCompany : scopedForCompany.filter(p => p.company === state.company);
-    return ["All", ...Array.from(new Set(scope.map(p => p.role))).sort()];
+    return Array.from(new Set(scope.map(p => p.role))).sort();
   }, [scopedForCompany, state.company]);
 
   const filtered = useMemo(() => {
@@ -64,7 +66,7 @@ export default function CompanyPacketsView({ initial }: { initial: PacketListIte
       (state.track === "All" || p.track === state.track) &&
       (state.yoe === "All" || p.yoeBucket === state.yoe) &&
       (state.company === "All" || p.company === state.company) &&
-      (state.role === "All" || p.role === state.role) &&
+      (state.role.length === 0 || state.role.includes(p.role)) &&
       (!qL || `${p.company} ${p.role}`.toLowerCase().includes(qL))
     );
   }, [initial, state]);
@@ -90,7 +92,7 @@ export default function CompanyPacketsView({ initial }: { initial: PacketListIte
         />
         <select
           value={state.track}
-          onChange={e => { setState(s => ({ ...s, track: e.target.value as State["track"], company: "All", role: "All" })); setVisible(PAGE); }}
+          onChange={e => { setState(s => ({ ...s, track: e.target.value as State["track"], company: "All", role: [] })); setVisible(PAGE); }}
           className="rounded-xl border border-edge bg-panel px-3 py-2 text-sm text-text"
         >
           <option value="All">All tracks</option>
@@ -98,7 +100,7 @@ export default function CompanyPacketsView({ initial }: { initial: PacketListIte
         </select>
         <select
           value={state.yoe}
-          onChange={e => { setState(s => ({ ...s, yoe: e.target.value as State["yoe"], company: "All", role: "All" })); setVisible(PAGE); }}
+          onChange={e => { setState(s => ({ ...s, yoe: e.target.value as State["yoe"], company: "All", role: [] })); setVisible(PAGE); }}
           className="rounded-xl border border-edge bg-panel px-3 py-2 text-sm text-text"
         >
           <option value="All">All experience</option>
@@ -106,20 +108,17 @@ export default function CompanyPacketsView({ initial }: { initial: PacketListIte
         </select>
         <select
           value={state.company}
-          onChange={e => { setState(s => ({ ...s, company: e.target.value, role: "All" })); setVisible(PAGE); }}
+          onChange={e => { setState(s => ({ ...s, company: e.target.value, role: [] })); setVisible(PAGE); }}
           className="rounded-xl border border-edge bg-panel px-3 py-2 text-sm text-text"
         >
           <option value="All">All companies</option>
           {companies.filter(c => c !== "All").map(c => <option key={c} value={c}>{c}</option>)}
         </select>
-        <select
-          value={state.role}
-          onChange={e => { setState(s => ({ ...s, role: e.target.value })); setVisible(PAGE); }}
-          className="rounded-xl border border-edge bg-panel px-3 py-2 text-sm text-text"
-        >
-          <option value="All">All roles</option>
-          {roles.filter(r => r !== "All").map(r => <option key={r} value={r}>{r}</option>)}
-        </select>
+        <MultiSelect
+          inline label="Role" allLabel="All roles"
+          options={roles} value={state.role}
+          onChange={v => { setState(s => ({ ...s, role: v })); setVisible(PAGE); }}
+        />
       </section>
 
       <section>

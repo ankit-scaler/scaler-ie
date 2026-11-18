@@ -1,95 +1,12 @@
 "use client";
-import { useEffect, useMemo, useRef, useState } from "react";
+import { useMemo } from "react";
 import { motion } from "framer-motion";
+import MultiSelect from "./MultiSelect";
 
 // role and round are multi-select: an empty list means "All".
 export type FilterState = {
   program: string; company: string; role: string[]; round: string[]; topic: string; q: string;
 };
-
-// Searchable multi-select. Defined at module level (not inside Filters) so its
-// open/search state and input focus survive the parent re-rendering.
-function MultiSelect({ label, accent, options, value, onChange }: {
-  label: string; accent: string; options: string[]; value: string[]; onChange: (v: string[]) => void;
-}) {
-  const [open, setOpen] = useState(false);
-  const [q, setQ] = useState("");
-  const ref = useRef<HTMLDivElement>(null);
-  const inputRef = useRef<HTMLInputElement>(null);
-
-  useEffect(() => {
-    if (!open) { setQ(""); return; }
-    inputRef.current?.focus();
-    const onDown = (e: MouseEvent) => { if (ref.current && !ref.current.contains(e.target as Node)) setOpen(false); };
-    const onKey = (e: KeyboardEvent) => { if (e.key === "Escape") setOpen(false); };
-    document.addEventListener("mousedown", onDown);
-    document.addEventListener("keydown", onKey);
-    return () => { document.removeEventListener("mousedown", onDown); document.removeEventListener("keydown", onKey); };
-  }, [open]);
-
-  const matches = useMemo(() => {
-    const t = q.trim().toLowerCase();
-    return t ? options.filter(o => o.toLowerCase().includes(t)) : options;
-  }, [options, q]);
-  const selected = useMemo(() => new Set(value), [value]);
-  const toggle = (o: string) => onChange(selected.has(o) ? value.filter(v => v !== o) : [...value, o]);
-  const selectAllMatching = () => onChange(Array.from(new Set([...value, ...matches])));
-  const summary = value.length === 0 ? "All" : value.length === 1 ? value[0] : `${value.length} selected`;
-
-  return (
-    <div className="group flex min-w-0 flex-col gap-1.5" ref={ref}>
-      <span className={`font-mono text-[11px] font-semibold uppercase tracking-widest ${accent}`}>{label}</span>
-      <div className="relative">
-        <button
-          type="button"
-          onClick={() => setOpen(o => !o)}
-          aria-haspopup="listbox"
-          aria-expanded={open}
-          className="flex w-full items-center rounded-xl border border-edge bg-panel px-3 py-2.5 pr-9 text-left text-sm text-text transition-colors focus:border-acad focus:outline-none group-hover:border-text/40"
-        >
-          <span className="truncate">{summary}</span>
-        </button>
-        <svg className="pointer-events-none absolute right-3 top-1/2 h-4 w-4 -translate-y-1/2 text-mute" viewBox="0 0 20 20" fill="currentColor">
-          <path d="M5 8l5 5 5-5H5z" />
-        </svg>
-        {open && (
-          <div className="absolute left-0 top-full z-30 mt-1 w-full min-w-[240px] overflow-hidden rounded-xl border border-edge bg-panel shadow-card">
-            <div className="border-b border-edge/60 p-2">
-              <input
-                ref={inputRef}
-                value={q}
-                onChange={e => setQ(e.target.value)}
-                placeholder={`Search ${label.toLowerCase()}...`}
-                className="w-full rounded-lg border border-edge bg-panel2 px-3 py-2 text-sm text-text placeholder:text-mute/60 focus:border-acad focus:outline-none"
-              />
-            </div>
-            <div className="flex items-center justify-between border-b border-edge/60 px-3 py-2 text-xs">
-              <span className="font-mono text-mute">{matches.length} {q.trim() ? "matching" : "options"}</span>
-              <span className="flex gap-3">
-                <button type="button" onClick={selectAllMatching} disabled={matches.length === 0} className="text-acad hover:underline disabled:opacity-40">
-                  Select all{q.trim() ? ` ${matches.length}` : ""}
-                </button>
-                <button type="button" onClick={() => onChange([])} disabled={value.length === 0} className="text-mute hover:text-text hover:underline disabled:opacity-40">
-                  Clear
-                </button>
-              </span>
-            </div>
-            <div className="max-h-64 overflow-y-auto py-1" role="listbox" aria-multiselectable="true">
-              {matches.length === 0 ? (
-                <div className="px-3 py-3 text-sm text-mute">No matches.</div>
-              ) : matches.map(o => (
-                <label key={o} className="flex cursor-pointer items-start gap-2.5 px-3 py-1.5 text-sm text-text hover:bg-panel2">
-                  <input type="checkbox" checked={selected.has(o)} onChange={() => toggle(o)} className="mt-0.5 h-4 w-4 shrink-0 accent-acad" />
-                  <span className="break-words">{o}</span>
-                </label>
-              ))}
-            </div>
-          </div>
-        )}
-      </div>
-    </div>
-  );
-}
 
 // Canonical spelling + display order for known programs; anything else found
 // in the data (unexpected casing, a brand-new program) is appended after.
