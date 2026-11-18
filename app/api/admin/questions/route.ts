@@ -1,4 +1,5 @@
 import { NextResponse } from "next/server";
+import { revalidateTag } from "next/cache";
 import { requireAdmin } from "@/lib/admin";
 import { supabaseAdmin } from "@/lib/supabase-server";
 
@@ -84,5 +85,8 @@ export async function POST(req: Request) {
 
   const { error } = await admin.from("questions").update({ topic_ai, topic_ai_manual: true }).eq("id", id);
   if (error) return NextResponse.json({ ok: false, error: error.message }, { status: 400 });
+  // The Questions page caches all rows for 6 hours (app/page.tsx); drop that
+  // cache so this topic fix shows up right away.
+  revalidateTag("questions");
   return NextResponse.json({ ok: true });
 }

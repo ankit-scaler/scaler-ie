@@ -1,4 +1,39 @@
+import { unstable_cache } from "next/cache";
 import { supabaseAdmin } from "@/lib/supabase-server";
+import { CHUNK_ROWS, mergeChunks, pageCount } from "@/lib/chunk-utils";
+
+// Same read as fetchAllRows, but cached PER 1000-ROW PAGE instead of as one
+// value. Vercel's Data Cache refuses any single item over 2 MB, and a table
+// like `questions` (~4.5 MB as JSON) can never fit as one entry — so wrapping
+// fetchAllRows in unstable_cache silently cached nothing and every page load
+// re-ran ~15 queries. Each page here is ~340 KB, so it is actually stored.
+// An error throws (nothing is cached for it) rather than silently returning a
+// short list; a previously cached copy keeps being served meanwhile.
+export async function cachedPagedRows<T extends { id: number }>(opts: {
+  keyBase: string; table: string; select: string; revalidate: number; tags: string[];
+}): Promise<T[]> {
+  const { keyBase, table, select, revalidate, tags } = opts;
+  const cacheOpts = { revalidate, tags };
+
+  const getCount = unstable_cache(async () => {
+    const { count, error } = await supabaseAdmin().from(table).select("id", { count: "exact", head: true });
+    if (error) throw new Error(`${table} count: ${error.message}`);
+    return count ?? 0;
+  }, [keyBase, "count"], cacheOpts);
+
+  const total = await getCount();
+  const getPage = (i: number) =>
+    unstable_cache(async () => {
+      const { data, error } = await supabaseAdmin()
+        .from(table).select(select).order("id", { ascending: false })
+        .range(i * CHUNK_ROWS, i * CHUNK_ROWS + CHUNK_ROWS - 1);
+      if (error) throw new Error(`${table} page ${i}: ${error.message}`);
+      return (data ?? []) as unknown as T[];
+    }, [keyBase, "page", String(i)], cacheOpts)();
+
+  const chunks = await Promise.all(Array.from({ length: pageCount(total) }, (_, i) => getPage(i)));
+  return mergeChunks(chunks);
+}
 
 // Supabase caps a single request at 1000 rows. Fetches every page in
 // parallel (after one count query) instead of awaiting pages one at a
