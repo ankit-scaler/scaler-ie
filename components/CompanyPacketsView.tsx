@@ -2,6 +2,7 @@
 import { useEffect, useMemo, useState } from "react";
 import { motion } from "framer-motion";
 import Monogram, { Tone } from "./Monogram";
+import RequestPacketButton from "./RequestPacketButton";
 import { PacketListItem, TRACK_LABELS, YOE_LABELS, Track, YoeBucket } from "@/lib/packets-db";
 
 const PAGE = 30;
@@ -70,11 +71,14 @@ export default function CompanyPacketsView({ initial }: { initial: PacketListIte
 
   return (
     <div className="space-y-8">
-      <section>
-        <span className="font-mono text-[11px] uppercase tracking-widest text-mute">Packets</span>
-        <h1 className="mt-1 font-display text-4xl leading-tight sm:text-5xl">
-          Company packets,<br /><span className="text-mute">one link away.</span>
-        </h1>
+      <section className="flex flex-wrap items-start justify-between gap-4">
+        <div>
+          <span className="font-mono text-[11px] uppercase tracking-widest text-mute">Packets</span>
+          <h1 className="mt-1 font-display text-4xl leading-tight sm:text-5xl">
+            Company packets,<br /><span className="text-mute">one link away.</span>
+          </h1>
+        </div>
+        <RequestPacketButton />
       </section>
 
       <section className="flex flex-wrap gap-3">

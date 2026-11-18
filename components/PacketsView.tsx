@@ -2,6 +2,7 @@
 import { useMemo } from "react";
 import LoadingLink from "./LoadingLink";
 import Monogram from "./Monogram";
+import RequestPacketButton from "./RequestPacketButton";
 import { motion } from "framer-motion";
 import { useUrlParam } from "@/lib/useUrlParam";
 
@@ -14,11 +15,14 @@ export default function PacketsView({ packets }: { packets: Packet[] }) {
 
   return (
     <div className="space-y-8">
-      <section>
-        <span className="font-mono text-[11px] uppercase tracking-widest text-mute">Packets for Hirings</span>
-        <h1 className="mt-1 font-display text-4xl leading-tight sm:text-5xl">
-          Prep packets,<br /><span className="text-mute">by role and experience.</span>
-        </h1>
+      <section className="flex flex-wrap items-start justify-between gap-4">
+        <div>
+          <span className="font-mono text-[11px] uppercase tracking-widest text-mute">Packets for Hirings</span>
+          <h1 className="mt-1 font-display text-4xl leading-tight sm:text-5xl">
+            Prep packets,<br /><span className="text-mute">by role and experience.</span>
+          </h1>
+        </div>
+        <RequestPacketButton />
       </section>
 
       <div className="flex flex-wrap gap-1.5">

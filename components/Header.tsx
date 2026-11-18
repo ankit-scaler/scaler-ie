@@ -139,7 +139,6 @@ export default function Header() {
               <div className="flex items-center gap-0.5 rounded-full bg-panel2 p-1">
                 {MAIN_TABS.map(t => tab(t.href, t.label, { icon: t.icon }))}
               </div>
-              {tab("/jobs", "Open Hirings", { highlight: true })}
               {tab(CORTEX_URL, "Revise with Crash Course", { external: true, highlight: true })}
             </nav>
             {/* Narrower screens: one Menu button instead of a scrolling strip. */}
@@ -157,7 +156,7 @@ export default function Header() {
               </button>
               {navMenuOpen && (
                 <div role="menu" className="absolute left-0 top-full z-50 mt-2 w-72 max-w-[calc(100vw-2rem)] overflow-hidden rounded-xl border border-edge bg-panel p-1.5 shadow-card">
-                  {[...MAIN_TABS, { href: "/jobs", label: "Open Hirings", icon: "j" as const }, { href: CORTEX_URL, label: "Revise with Crash Course", icon: "r" as const }].map(t => {
+                  {[...MAIN_TABS, { href: CORTEX_URL, label: "Revise with Crash Course", icon: "r" as const }].map(t => {
                     const external = t.href.startsWith("http");
                     const active = !external && path === t.href;
                     return (
@@ -179,6 +178,18 @@ export default function Header() {
           </>
         )}
         <div className="flex shrink-0 items-center gap-3">
+          {email && (
+            <LoadingLink
+              href="/jobs"
+              title="Open Hirings"
+              aria-label="Open Hirings"
+              className={`flex h-9 w-9 items-center justify-center rounded-full border transition-colors duration-200 ${
+                path === "/jobs" ? "border-acad bg-acad/15" : "border-acad/40 bg-ink hover:border-acad/70 hover:bg-acad/15"
+              }`}
+            >
+              <img src="/icons/hiring.png" alt="" width={22} height={22} className="h-[22px] w-[22px]" />
+            </LoadingLink>
+          )}
           {!isPacketOpen && <ThemeToggle />}
           {email ? (
             <>
