@@ -8,7 +8,14 @@ type Props = Omit<React.ComponentProps<typeof Link>, "href"> & { href: string; s
 
 // next/link with instant click feedback: shows a spinner and blocks repeat
 // clicks until the route changes. (Next 14 has no useLinkStatus.)
-export default function LoadingLink({ href, onClick, className = "", spinnerClassName = "", children, target, ...rest }: Props) {
+//
+// Prefetching is OFF by default. Every page here is force-dynamic and the router
+// cache is set to 0 (staleTimes.dynamic in next.config.mjs), so a prefetched page
+// is thrown away immediately, yet each visible link still cost a Vercel function
+// call: the Resumes list (44 cards) alone caused ~7 calls per view, and the header
+// links added more on every page load. The click spinner already covers the wait.
+// Pass prefetch explicitly on a specific link to opt back in.
+export default function LoadingLink({ href, onClick, className = "", spinnerClassName = "", children, target, prefetch, ...rest }: Props) {
   const path = usePathname();
   const [pending, setPending] = useState(false);
 
@@ -29,6 +36,7 @@ export default function LoadingLink({ href, onClick, className = "", spinnerClas
     <Link
       {...rest}
       href={href}
+      prefetch={prefetch ?? false}
       target={target}
       aria-busy={pending || undefined}
       className={`${className} ${pending ? "pointer-events-none opacity-70" : ""}`}

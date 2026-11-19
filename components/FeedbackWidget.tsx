@@ -31,7 +31,9 @@ export default function FeedbackWidget() {
 
   useEffect(() => {
     const sb = supabaseBrowser();
-    sb.auth.getUser().then(({ data }) => setEmail(data.user?.email ?? null));
+    // Local session, no network call: this only decides whether to show the
+    // button, and the feedback API verifies the login itself.
+    sb.auth.getSession().then(({ data }) => setEmail(data.session?.user?.email ?? null));
     const { data: sub } = sb.auth.onAuthStateChange((_e, session) => setEmail(session?.user?.email ?? null));
     return () => sub.subscription.unsubscribe();
   }, []);

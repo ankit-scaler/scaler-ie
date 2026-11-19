@@ -5,6 +5,7 @@ import { useEffect, useRef, useState } from "react";
 import { motion } from "framer-motion";
 import { supabaseBrowser } from "@/lib/supabase-browser";
 import ThemeToggle from "./ThemeToggle";
+import { readAdminCache, writeAdminCache } from "@/lib/admin-cache";
 
 const ICON = {
   q: <path d="M4 5h12v8H9l-4 3v-3H4z" />,
@@ -76,17 +77,35 @@ export default function Header() {
   const isPacketOpen = /^\/packets\/[^/]+/.test(path || "");
 
   useEffect(() => {
+    // Supabase fires several auth events per page load (initial session, signed
+    // in, hourly token refresh) and the email almost never changes between
+    // them. Only act when it does; before, each event re-ran the admin check
+    // (3 calls to /api/admin/stats in one page load in the network log).
+    let lastApplied: string | null | undefined;
     const applyUser = async (e: string | null) => {
+      if (e === lastApplied) return;
+      lastApplied = e;
       setEmail(e);
       if (e) {
-        const r = await fetch("/api/admin/stats?check=1");
-        setAdmin(r.ok);
+        // Remembered for an hour per browser session: no server call on every
+        // page load. Only definite answers are stored (200 admin / 403 not).
+        const store = (() => { try { return window.sessionStorage; } catch { return null; } })();
+        const cached = readAdminCache(store, e, Date.now());
+        if (cached !== null) { setAdmin(cached); return; }
+        const r = await fetch("/api/admin/stats?check=1").catch(() => null);
+        if (lastApplied !== e) return; // the user changed (e.g. signed out) while we waited: drop this stale answer
+        setAdmin(!!r?.ok);
+        if (r && (r.ok || r.status === 403)) writeAdminCache(store, e, r.ok, Date.now());
+        else lastApplied = undefined; // no definite answer (network/server error): allow a retry on the next auth event
       } else {
         setAdmin(false);
       }
     };
 
-    sb.auth.getUser().then(({ data }) => applyUser(data.user?.email ?? null));
+    // Local session (no network). getUser() made a call to Supabase Auth on
+    // every page load just to read the email; this is display-only, and every
+    // server route still verifies the login itself.
+    sb.auth.getSession().then(({ data }) => applyUser(data.session?.user?.email ?? null));
 
     const { data: sub } = sb.auth.onAuthStateChange((_event, session) => {
       applyUser(session?.user?.email ?? null);
