@@ -20,7 +20,7 @@ const ICON = {
 const Icon = ({ k }: { k: keyof typeof ICON }) => (
   <svg className="h-4 w-4 shrink-0" viewBox="0 0 20 20" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round" aria-hidden>{ICON[k]}</svg>
 );
-const CORTEX_URL = "https://cortex-by-scaler.up.railway.app/login";
+const CORTEX_URL = "https://cortex.scaler.com/login";
 // Model resumes list (app/resumes). Change this one constant if the route moves.
 const RESUME_HREF = "/resumes";
 
