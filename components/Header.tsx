@@ -45,6 +45,18 @@ const CAREER_TABS: NavItem[] = [
 ];
 const CORTEX_ITEM: NavItem = { href: CORTEX_URL, label: "Revise with Crash Course", short: "Crash Course", hint: "Opens in a new tab", icon: "r", external: true };
 
+// Crash Course opens an external site, so the only way to count its users is
+// to log the click. Stored as a page_views row (path "/crash-course"); keepalive
+// lets the request finish even though a new tab opens.
+const trackCrashCourse = () => {
+  fetch("/api/track", {
+    method: "POST",
+    headers: { "content-type": "application/json" },
+    body: JSON.stringify({ path: "/crash-course" }),
+    keepalive: true,
+  }).catch(() => {});
+};
+
 const NewTag = () => (
   <span className="relative z-10 rounded-full bg-acad px-1.5 py-0.5 font-mono text-[9px] font-semibold uppercase leading-none tracking-wider text-ink">New</span>
 );
@@ -155,6 +167,7 @@ export default function Header() {
         href={item.href}
         title={item.label}
         aria-current={active ? "page" : undefined}
+        onClick={external ? trackCrashCourse : undefined}
         {...(external ? { target: "_blank", rel: "noopener noreferrer" } : {})}
         className={`group relative inline-flex items-center gap-2 whitespace-nowrap rounded-full px-3.5 py-1.5 text-sm transition-colors duration-200 ${
           highlight
@@ -223,6 +236,7 @@ export default function Header() {
                         href={t.href}
                         role="menuitem"
                         aria-current={active ? "page" : undefined}
+                        onClick={external ? trackCrashCourse : undefined}
                         {...(external ? { target: "_blank", rel: "noopener noreferrer" } : {})}
                         className={`flex items-center gap-3 rounded-lg px-3 py-2.5 text-sm transition-colors ${
                           active ? "bg-panel2 font-semibold text-text" : "text-mute hover:bg-panel2 hover:text-text"

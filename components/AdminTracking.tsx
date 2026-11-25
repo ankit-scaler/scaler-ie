@@ -2,6 +2,7 @@
 import { useEffect, useMemo, useRef, useState } from "react";
 import { BarChart, Bar, XAxis, YAxis, Tooltip, ResponsiveContainer, LineChart, Line, CartesianGrid, Legend } from "recharts";
 import { FlightSpinner } from "./FlightLoader";
+import PeriodMetrics from "./PeriodMetrics";
 import { Card, Stat, SectionLabel, type Accent } from "./AdminShared";
 import { buildPageVisitByEmail } from "@/lib/page-visit-tracking";
 import {
@@ -1035,6 +1036,8 @@ export default function AdminTracking() {
           </ResponsiveContainer>
         </Card>
       </section>
+
+      <PeriodMetrics downloadCsv={downloadCsv} />
 
       <SectionLabel accent="acad" id="sec-questions" note="Nav tab “Questions”. Counted when a learner narrows to a company + role or a topic; just opening the page isn’t counted.">Questions</SectionLabel>
 
