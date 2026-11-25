@@ -140,3 +140,8 @@
 - Crash Course was not tracked (external link). Header.tsx now logs a click as a page_views row with path "/crash-course"; history starts at deploy time, earlier periods show 0.
 - Current unfinished period is not shown. Rows: Packets = /company-packets, Trending roles = /packets, Hiring = /jobs, Questions = /.
 - Rejected: summing admin_daily_activity (wrong for week/month uniques); aggregating raw rows in the browser (1000-row cap).
+
+## 2026-11-25: Feedback nudge (button pulse + dismissible card)
+- Decision: components/FeedbackWidget.tsx pulses the Share feedback button for ~5 s on each visit (CSS ring, off for reduced-motion) and, from the 3rd distinct IST day of use, shows a small dismissible card ("How useful is the Vault...", 1-5 stars; a star opens the existing form with Usefulness pre-filled). Rules in lib/feedback-nudge.ts: card only after 20 s on a page, at most once per session, not on /login, /auth or packet readers; "Not now"/X/rating-then-bail snoozes 14 days; "Don't ask again" stops card and pulse; a submitted feedback quiets both for 60 days.
+- State is localStorage only (key iv:fb, session flag iv:fb-shown): zero Vercel/Supabase calls. Trade-off: per browser, so a second device can show the card again.
+- Rejected: modal/auto-open form (irritating); server-side state (extra calls); pulse that never stops.
